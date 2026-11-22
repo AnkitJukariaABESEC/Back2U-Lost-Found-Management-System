@@ -25,6 +25,7 @@ import {
 import confetti from 'canvas-confetti';
 import { emailService, isRealEmailConfigured } from '../services/emailService.js';
 import { profileService } from '../services/profileService.js';
+import { InstallAppBanner } from './InstallAppBanner.jsx';
 
 const BRANCHES = [
   'Computer Science and Engineering (CSE-1)',
@@ -721,6 +722,8 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
         © 2026 Back2U • Central Campus Belongings Recovery Network
       </footer>
 
+      {/* Android PWA Install App Banner */}
+      <InstallAppBanner />
     </div>
   );
 };

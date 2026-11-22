@@ -6,6 +6,7 @@ import { FilterBar } from './components/FilterBar.jsx';
 import { ItemCard } from './components/ItemCard.jsx';
 import { CaringCampusBanner } from './components/CaringCampusBanner.jsx';
 import { FrontAuthPage } from './components/FrontAuthPage.jsx';
+import { InstallAppBanner } from './components/InstallAppBanner.jsx';
 import { ReportItemModal } from './components/ReportItemModal.jsx';
 import { ClaimModal } from './components/ClaimModal.jsx';
 import { ItemDetailsModal } from './components/ItemDetailsModal.jsx';
@@ -533,6 +534,9 @@ export default function App() {
         isOpen={isProfileViewerModalOpen}
         onClose={() => setIsProfileViewerModalOpen(false)}
       />
+
+      {/* Android PWA Install App Banner */}
+      <InstallAppBanner />
     </div>
   );
 }
