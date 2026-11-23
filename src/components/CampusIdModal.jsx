@@ -432,21 +432,8 @@ export const CampusIdModal = ({
                 </div>
               </div>
               <p className="text-xs text-indigo-700 leading-relaxed">
-                Click the verification link in your email inbox to automatically verify your college address.
+                Please check your email inbox (and spam folder) and click the verification link to automatically activate your account.
               </p>
-
-              {/* Direct verification link fallback */}
-              <div className="pt-2 border-t border-indigo-200/60 flex items-center justify-between text-xs">
-                <span className="text-[11px] text-slate-500">Checking email or in spam folder?</span>
-                <button
-                  type="button"
-                  onClick={handleDirectVerify}
-                  className="font-bold text-indigo-700 hover:text-indigo-900 underline flex items-center gap-1 cursor-pointer"
-                >
-                  <span>Verify link now</span>
-                  <ExternalLink className="w-3 h-3" />
-                </button>
-              </div>
             </div>
           )}
 

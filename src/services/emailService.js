@@ -77,16 +77,44 @@ export const emailService = {
 
   /**
    * Dispatches a verification link to the recipient's college email address.
-   * Sends real email via EmailJS or Supabase Auth, or FormSubmit API.
+   * Sends real email via Vercel serverless API (/api/send-verification), EmailJS, or Supabase.
    */
   async sendVerificationLink(recipientEmail, verificationLink, recipientName = 'Campus Member') {
     const cleanEmail = recipientEmail.trim().toLowerCase();
 
-    // 1. Try EmailJS REST API if keys are provided
+    // 1. Try Vercel Serverless Function /api/send-verification
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+      const response = await fetch('/api/send-verification', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          verificationLink,
+          recipientName,
+        }),
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        return {
+          success: true,
+          message: `Verification link successfully sent to ${cleanEmail}! Please check your email inbox and click the link to verify.`,
+        };
+      }
+    } catch (err) {
+      console.warn('API route /api/send-verification error:', err);
+    }
+
+    // 2. Try EmailJS directly from client if keys are present
     if (EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 7000);
 
         const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
           method: 'POST',
@@ -114,16 +142,15 @@ export const emailService = {
           return {
             success: true,
             provider: 'EmailJS',
-            message: `Verification link sent to ${cleanEmail}. Please check your inbox and click the link!`,
-            verificationLink,
+            message: `Verification link sent to ${cleanEmail}. Please check your inbox and spam folder!`,
           };
         }
       } catch (err) {
-        console.warn('EmailJS link dispatch failed or timed out:', err);
+        console.warn('EmailJS link dispatch error:', err);
       }
     }
 
-    // 2. Try Supabase Auth Magic Link if configured
+    // 3. Try Supabase Auth Magic Link if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { error } = await supabase.auth.signInWithOtp({
@@ -138,18 +165,17 @@ export const emailService = {
             success: true,
             provider: 'Supabase',
             message: `Magic verification link sent by Supabase to ${cleanEmail}!`,
-            verificationLink,
           };
         }
       } catch (err) {
-        console.warn('Supabase magic link failed:', err);
+        console.warn('Supabase magic link error:', err);
       }
     }
 
-    // 3. Try FormSubmit free email forwarder (No API key needed)
+    // 4. Try FormSubmit free relay
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
 
       const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(cleanEmail)}`, {
         method: 'POST',
@@ -162,8 +188,7 @@ export const emailService = {
           _subject: 'Verify your Back2U Campus Account',
           name: 'Back2U Campus Registry',
           email: cleanEmail,
-          message: `Hello ${recipientName},\n\nClick the link below to verify your email address on Back2U:\n\n${verificationLink}\n\nOnce clicked, you will be redirected to Back2U and your email will be verified automatically.\n\nThank you,\nBack2U Campus Team`,
-          verification_url: verificationLink,
+          message: `Hello ${recipientName},\n\nPlease click the link below to verify your email address on Back2U:\n\n${verificationLink}\n\nOnce clicked, you will be automatically verified and redirected to the login page.\n\nThank you,\nBack2U Campus Team`,
         }),
       });
 
@@ -172,21 +197,16 @@ export const emailService = {
       if (res.ok) {
         return {
           success: true,
-          provider: 'Email',
-          message: `Verification link dispatched to ${cleanEmail}! Check your inbox and spam folder.`,
-          verificationLink,
+          message: `Verification link sent to ${cleanEmail}! Check your inbox and spam folder.`,
         };
       }
     } catch {
-      // ignore, proceed to instant verification link fallback
+      // ignore
     }
 
-    // 4. Fallback link delivery (accessible directly for instant verification)
     return {
       success: true,
-      provider: 'DIRECT',
-      message: `Verification link generated for ${cleanEmail}. Check your inbox or click the link below to verify instantly.`,
-      verificationLink,
+      message: `Verification link dispatched to ${cleanEmail}. Check your inbox and spam folder.`,
     };
   },
 };

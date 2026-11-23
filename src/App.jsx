@@ -293,6 +293,7 @@ export default function App() {
         }}
         onGuestPreview={() => setGuestMode(true)}
         initialVerifiedEmail={verifiedEmailNotice}
+        redirectToLogin={Boolean(verifiedEmailNotice)}
       />
     );
   }

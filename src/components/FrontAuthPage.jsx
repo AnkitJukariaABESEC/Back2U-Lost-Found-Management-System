@@ -15,10 +15,9 @@ import {
   AlertCircle,
   Eye,
   ArrowRight,
-  ExternalLink,
   Send,
   Loader2,
-  Check
+  Clock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { emailService } from '../services/emailService.js';
@@ -56,11 +55,11 @@ const TEACHER_DESIGNATIONS = [
   'Dean / Directorate',
 ];
 
-export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEmail = '' }) => {
-  const [activeTab, setActiveTab] = useState('LOGIN'); // 'LOGIN' or 'SIGNUP'
+export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEmail = '', redirectToLogin = false }) => {
+  const [activeTab, setActiveTab] = useState(redirectToLogin ? 'LOGIN' : 'SIGNUP'); // Defaults to LOGIN if redirected
 
   // --- LOGIN STATE ---
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState(initialVerifiedEmail || '');
   const [loginError, setLoginError] = useState('');
 
   // --- SIGNUP STATE ---
@@ -80,34 +79,36 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
   const [isEmailVerified, setIsEmailVerified] = useState(Boolean(initialVerifiedEmail));
   const [isSendingLink, setIsSendingLink] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
-  const [sentLinkUrl, setSentLinkUrl] = useState('');
-  const [deliveryStatus, setDeliveryStatus] = useState(null);
+  const [sentMessage, setSentMessage] = useState('');
 
-  // If an initialVerifiedEmail was passed or URL had verified email
+  // When initialVerifiedEmail arrives from clicking email link
   useEffect(() => {
     if (initialVerifiedEmail) {
       setSignupEmail(initialVerifiedEmail);
+      setLoginEmail(initialVerifiedEmail);
       setIsEmailVerified(true);
-      setActiveTab('SIGNUP');
+      setActiveTab('LOGIN'); // Auto-redirects to Login tab as requested!
     }
   }, [initialVerifiedEmail]);
 
-  // Check on mount if current signup email is already verified
+  // Check if current signup email is verified
   useEffect(() => {
     if (signupEmail && emailService.isEmailVerified(signupEmail)) {
       setIsEmailVerified(true);
     }
   }, [signupEmail]);
 
-  // Cross-tab and auto-verification listener
+  // Cross-tab auto-verification listener (e.g. if link is clicked in mobile or another window)
   useEffect(() => {
     const handleStorageChange = () => {
       if (signupEmail && emailService.isEmailVerified(signupEmail)) {
         setIsEmailVerified(true);
         setLinkSent(false);
+        setActiveTab('LOGIN');
+        setLoginEmail(signupEmail);
         try {
           confetti({
-            particleCount: 50,
+            particleCount: 60,
             spread: 60,
             origin: { y: 0.6 },
           });
@@ -116,7 +117,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
     };
 
     window.addEventListener('storage', handleStorageChange);
-    const interval = setInterval(handleStorageChange, 1500); // Polling check every 1.5s for seamless multi-device approval
+    const interval = setInterval(handleStorageChange, 1500);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
@@ -129,12 +130,13 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
     e.preventDefault();
     setLoginError('');
 
-    if (!loginEmail.trim()) {
+    const clean = loginEmail.trim().toLowerCase();
+    if (!clean) {
       setLoginError('Please enter your college email address.');
       return;
     }
 
-    const result = profileService.login(loginEmail.trim());
+    const result = profileService.login(clean);
     if (result.success) {
       try {
         confetti({
@@ -149,7 +151,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
     }
   };
 
-  // Handle Send Verification Link
+  // Handle Send Verification Link directly to user's email
   const handleSendVerificationLink = async () => {
     setSignupError('');
 
@@ -160,17 +162,15 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
     }
 
     setIsSendingLink(true);
-    setDeliveryStatus(null);
 
     try {
-      // 1. Generate verification token
+      // 1. Generate token
       const token = emailService.createVerificationToken(cleanEmail);
 
-      // 2. Build redirect link pointing back to current origin
-      const verificationUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${token}`;
-      setSentLinkUrl(verificationUrl);
+      // 2. Build verification link with redirect to login
+      const verificationUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${token}&action=redirect_login`;
 
-      // 3. Send email via service (EmailJS / Supabase / Email endpoint)
+      // 3. Dispatch directly to recipient's email address
       const delivery = await emailService.sendVerificationLink(
         cleanEmail,
         verificationUrl,
@@ -178,38 +178,13 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
       );
 
       setLinkSent(true);
-      setDeliveryStatus(delivery);
+      setSentMessage(delivery.message || `Verification link has been sent to ${cleanEmail}. Check your inbox!`);
     } catch (err) {
-      console.error('Link dispatch error:', err);
-      // Fallback link so user is never blocked
-      const fallbackToken = emailService.createVerificationToken(cleanEmail);
-      const fallbackUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${fallbackToken}`;
-      setSentLinkUrl(fallbackUrl);
-      setLinkSent(true);
-      setDeliveryStatus({
-        success: true,
-        provider: 'DIRECT',
-        message: 'Verification link ready. Check below to verify.',
-        verificationLink: fallbackUrl,
-      });
+      console.error('Email link dispatch failed:', err);
+      setSignupError('Failed to dispatch verification email. Please check your connection.');
     } finally {
       setIsSendingLink(false);
     }
-  };
-
-  // Direct Verification Handler (Simulates clicking the email link directly)
-  const handleDirectVerify = () => {
-    if (!signupEmail) return;
-    emailService.markEmailVerified(signupEmail);
-    setIsEmailVerified(true);
-    setLinkSent(false);
-    try {
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.6 },
-      });
-    } catch {}
   };
 
   // Handle Sign Up submission
@@ -226,7 +201,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
       return;
     }
     if (!isEmailVerified) {
-      setSignupError('Please click the verification link sent to your email to verify your address first.');
+      setSignupError('Please check your email and click the verification link sent to your inbox before continuing.');
       return;
     }
     if (!mobile.trim() || mobile.length < 8) {
@@ -327,7 +302,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
             </h1>
 
             <p className="text-slate-600 text-base sm:text-lg max-w-lg leading-relaxed">
-              Sign in or create your verified Campus ID. We send a direct verification link to your email—simply click to auto-verify and gain instant access.
+              Create your verified Campus ID or sign in. When registering, we send an auto-verification link directly to your email inbox. Once clicked, you are automatically redirected to log in.
             </p>
 
             {/* Trust Badges */}
@@ -347,8 +322,8 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                   <Mail className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-[#1F1746]">1-Click Email Verify</h4>
-                  <p className="text-[11px] text-slate-500">No codes to type</p>
+                  <h4 className="text-xs font-bold text-[#1F1746]">Direct Email Link</h4>
+                  <p className="text-[11px] text-slate-500">Auto-verifies & redirects</p>
                 </div>
               </div>
             </div>
@@ -484,13 +459,13 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                 </form>
               )}
 
-              {/* VIEW 2: SIGN UP FORM (Asks All The Things & 1-Click Verification Link) */}
+              {/* VIEW 2: SIGN UP FORM */}
               {activeTab === 'SIGNUP' && (
                 <form onSubmit={handleSignupSubmit} className="space-y-3.5 animate-in fade-in duration-200 max-h-[75vh] overflow-y-auto pr-1 scrollbar-none">
                   <div className="text-center pb-1">
                     <h3 className="text-lg font-black text-[#1F1746]">Create Campus ID</h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Register with your official campus credentials and email verification link.
+                      Enter your email to receive an activation link directly in your inbox.
                     </p>
                   </div>
 
@@ -552,7 +527,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                     </div>
                   </div>
 
-                  {/* College Email & Verification Link System */}
+                  {/* College Email & Link Dispatch */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-bold text-[#1F1746]">
@@ -592,12 +567,12 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                           type="button"
                           onClick={handleSendVerificationLink}
                           disabled={isSendingLink}
-                          className="px-3 py-2 rounded-xl text-xs font-bold bg-[#EA580C] hover:bg-[#D94E07] text-white shrink-0 cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
+                          className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#EA580C] hover:bg-[#D94E07] text-white shrink-0 cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
                         >
                           {isSendingLink ? (
                             <>
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              <span>Sending Link...</span>
+                              <span>Sending...</span>
                             </>
                           ) : (
                             <>
@@ -609,41 +584,25 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                       )}
                     </div>
 
-                    {/* Verification Status Banner / Waiting Area */}
+                    {/* Verification Status Banner (Sent to actual email) */}
                     {isEmailVerified ? (
                       <div className="mt-2 flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 px-3.5 py-2 rounded-2xl border border-emerald-200">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Email address verified successfully!</span>
+                        <span>Email verified! You can complete your ID below.</span>
                       </div>
                     ) : linkSent ? (
-                      <div className="mt-2.5 p-3.5 rounded-2xl bg-purple-50/80 border border-purple-200 space-y-2 animate-in fade-in duration-300">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-[#1F1746]">
-                            <Mail className="w-4 h-4 text-[#371B7A]" />
-                            <span>Verification link dispatched!</span>
-                          </div>
-                          <span className="flex items-center gap-1 text-[11px] font-medium text-purple-700">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span>Waiting for click</span>
-                          </span>
+                      <div className="mt-2.5 p-3.5 rounded-2xl bg-purple-50/80 border border-purple-200 space-y-1.5 animate-in fade-in duration-300">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-[#1F1746]">
+                          <Mail className="w-4 h-4 text-[#371B7A]" />
+                          <span>Check Your Email Inbox</span>
                         </div>
-                        <p className="text-[11px] text-slate-600 leading-relaxed">
-                          We sent a verification link to <strong>{signupEmail}</strong>. Click the link in your email to automatically verify.
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          We sent a verification link to <strong>{signupEmail}</strong>.
+                          Please open your email inbox (and spam folder), and click the link to automatically verify and redirect to login.
                         </p>
-
-                        {/* Direct Verification Fallback Option */}
-                        <div className="pt-1 border-t border-purple-200/80 flex items-center justify-between gap-2">
-                          <span className="text-[10px] text-slate-500">
-                            Checking email or in spam folder?
-                          </span>
-                          <button
-                            type="button"
-                            onClick={handleDirectVerify}
-                            className="inline-flex items-center gap-1 text-[11px] font-bold text-[#371B7A] hover:text-[#EA580C] underline cursor-pointer"
-                          >
-                            <span>Verify link now</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </button>
+                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-purple-700 pt-1">
+                          <Clock className="w-3.5 h-3.5 text-purple-600" />
+                          <span>Waiting for you to click the link in your email...</span>
                         </div>
                       </div>
                     ) : null}
