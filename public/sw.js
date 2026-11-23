@@ -1,17 +1,16 @@
-const CACHE_NAME = 'back2u-cache-v2';
+const CACHE_NAME = 'back2u-cache-v3';
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/pwa-192.png',
   '/pwa-512.png',
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -21,6 +20,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((name) => {
           if (name !== CACHE_NAME) {
+            console.log('Purging old service worker cache:', name);
             return caches.delete(name);
           }
         })
@@ -30,18 +30,18 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network first, falling back to cache
+  // NEVER cache HTML pages or navigation or API requests - always live from network!
+  if (
+    event.request.mode === 'navigate' ||
+    event.request.method !== 'GET' ||
+    event.request.url.includes('/api/') ||
+    event.request.url.includes('?')
+  ) {
+    return;
+  }
+
+  // Network-first for static icons
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (event.request.method === 'GET' && networkResponse && networkResponse.status === 200) {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return networkResponse;
-      })
-      .catch(() => caches.match(event.request))
+    fetch(event.request).catch(() => caches.match(event.request))
   );
 });

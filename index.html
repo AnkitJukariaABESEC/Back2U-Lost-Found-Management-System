@@ -29,14 +29,27 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     
-    <!-- Register Service Worker for Android Installation -->
+    <!-- Service Worker Registration & Cache Purging -->
     <script>
+      // Instantly clear any stale caches from previous builds
+      if ('caches' in window) {
+        caches.keys().then((names) => {
+          for (const name of names) {
+            if (name !== 'back2u-cache-v3') {
+              caches.delete(name);
+            }
+          }
+        });
+      }
+
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(
-            (reg) => console.log('Back2U PWA ServiceWorker active:', reg.scope),
-            (err) => console.log('Back2U PWA ServiceWorker registration failed:', err)
-          );
+          navigator.serviceWorker.register('/sw.js').then((reg) => {
+            reg.update();
+            console.log('Back2U PWA ServiceWorker active:', reg.scope);
+          }).catch((err) => {
+            console.log('Back2U PWA ServiceWorker registration failed:', err);
+          });
         });
       }
     </script>

@@ -151,18 +151,29 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
           return true;
         });
         setLinkSent(false);
-        setActiveTab('SIGNUP'); // Stay firmly on SIGNUP tab so user can complete filling details!
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
-    const interval = setInterval(handleStorageChange, 1500);
-
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
     };
   }, [signupEmail]);
+
+  // If page loaded with verify_email in query params, immediately lock to SIGNUP and mark verified
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlEmail = params.get('verify_email');
+      if (urlEmail) {
+        const decoded = decodeURIComponent(urlEmail).trim().toLowerCase();
+        setSignupEmail(decoded);
+        setIsEmailVerified(true);
+        setActiveTab('SIGNUP');
+        setLoginError('');
+      }
+    } catch {}
+  }, []);
 
   // Handle Login submission (Email Only)
   const handleLoginSubmit = (e) => {
@@ -427,6 +438,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                   type="button"
                   onClick={() => {
                     setActiveTab('SIGNUP');
+                    setLoginError('');
                     setSignupError('');
                   }}
                   className={`flex-1 py-2 rounded-full text-xs sm:text-sm font-bold transition-all cursor-pointer ${
@@ -458,7 +470,11 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                         <div className="mt-1">
                           <button
                             type="button"
-                            onClick={() => setActiveTab('SIGNUP')}
+                            onClick={() => {
+                              setActiveTab('SIGNUP');
+                              setLoginError('');
+                              setSignupError('');
+                            }}
                             className="font-bold underline text-[#371B7A] cursor-pointer"
                           >
                             Click here to Sign Up with your details
@@ -498,7 +514,11 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                       Don't have a Campus ID?{' '}
                       <button
                         type="button"
-                        onClick={() => setActiveTab('SIGNUP')}
+                        onClick={() => {
+                          setActiveTab('SIGNUP');
+                          setLoginError('');
+                          setSignupError('');
+                        }}
                         className="font-bold text-[#EA580C] hover:underline cursor-pointer"
                       >
                         Create ID (Sign Up)
