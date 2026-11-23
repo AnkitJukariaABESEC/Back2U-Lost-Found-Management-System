@@ -173,20 +173,15 @@ export const CampusIdModal = ({
       setSentLinkUrl(verificationUrl);
 
       const result = await emailService.sendVerificationLink(cleanEmail, verificationUrl, name || 'Campus Member');
+      if (!result.success) {
+        setError(result.message || result.error || 'Failed to dispatch verification email.');
+        return;
+      }
       setDeliveryStatus(result);
       setLinkSent(true);
     } catch (err) {
       console.error(err);
-      const fallbackToken = emailService.createVerificationToken(cleanEmail);
-      const fallbackUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${fallbackToken}`;
-      setSentLinkUrl(fallbackUrl);
-      setLinkSent(true);
-      setDeliveryStatus({
-        success: true,
-        provider: 'DIRECT',
-        message: 'Verification link ready.',
-        verificationLink: fallbackUrl,
-      });
+      setError('Failed to send verification link. Please check your connection.');
     } finally {
       setIsSendingLink(false);
     }

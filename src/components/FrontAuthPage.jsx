@@ -177,6 +177,11 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
         name.trim() || (role === 'TEACHER' ? 'Faculty Member' : 'Student')
       );
 
+      if (!delivery.success) {
+        setSignupError(delivery.message || delivery.error || 'Failed to dispatch verification email.');
+        return;
+      }
+
       setLinkSent(true);
       setSentMessage(delivery.message || `Verification link has been sent to ${cleanEmail}. Check your inbox!`);
     } catch (err) {

@@ -81,11 +81,12 @@ export const emailService = {
    */
   async sendVerificationLink(recipientEmail, verificationLink, recipientName = 'Campus Member') {
     const cleanEmail = recipientEmail.trim().toLowerCase();
+    let apiErrorMessage = '';
 
-    // 1. Try Vercel Serverless Function /api/send-verification
+    // 1. Try Vercel Serverless Function /api/send-verification (Nodemailer Gmail SMTP or Resend)
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch('/api/send-verification', {
         method: 'POST',
@@ -100,14 +101,20 @@ export const emailService = {
 
       clearTimeout(timeoutId);
 
-      if (response.ok) {
+      const result = await response.json().catch(() => null);
+
+      if (response.ok && result?.success) {
         return {
           success: true,
-          message: `Verification link successfully sent to ${cleanEmail}! Please check your email inbox and click the link to verify.`,
+          provider: result.provider || 'API',
+          message: `Verification link sent to ${cleanEmail}! Please check your email inbox and spam folder, then click the link to verify.`,
         };
+      } else if (result?.message || result?.error) {
+        apiErrorMessage = result.message || result.error;
+        console.warn('API error from /api/send-verification:', apiErrorMessage);
       }
     } catch (err) {
-      console.warn('API route /api/send-verification error:', err);
+      console.warn('API route /api/send-verification network/timeout error:', err);
     }
 
     // 2. Try EmailJS directly from client if keys are present
@@ -142,7 +149,7 @@ export const emailService = {
           return {
             success: true,
             provider: 'EmailJS',
-            message: `Verification link sent to ${cleanEmail}. Please check your inbox and spam folder!`,
+            message: `Verification link sent to ${cleanEmail} via EmailJS. Please check your inbox and spam folder!`,
           };
         }
       } catch (err) {
@@ -172,7 +179,16 @@ export const emailService = {
       }
     }
 
-    // 4. Try FormSubmit free relay
+    // If an explicit API error like Resend Domain Restriction was returned, surface it
+    if (apiErrorMessage) {
+      return {
+        success: false,
+        error: apiErrorMessage,
+        message: apiErrorMessage,
+      };
+    }
+
+    // 4. Fallback: FormSubmit free relay
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
