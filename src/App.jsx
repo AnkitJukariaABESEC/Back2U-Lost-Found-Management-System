@@ -285,7 +285,6 @@ export default function App() {
 
   // If not logged in and not explicitly exploring as guest: Show Animated Front Auth Portal Page!
   if (!currentProfile && !guestMode) {
-    const hasExistingProfile = Boolean(verifiedEmailNotice && profileService.findProfileByQuery(verifiedEmailNotice));
     return (
       <FrontAuthPage
         onAuthSuccess={(profile) => {
@@ -294,7 +293,6 @@ export default function App() {
         }}
         onGuestPreview={() => setGuestMode(true)}
         initialVerifiedEmail={verifiedEmailNotice}
-        redirectToLogin={hasExistingProfile}
       />
     );
   }

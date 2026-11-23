@@ -1,4 +1,4 @@
-const CACHE_NAME = 'back2u-cache-v1';
+const CACHE_NAME = 'back2u-cache-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',

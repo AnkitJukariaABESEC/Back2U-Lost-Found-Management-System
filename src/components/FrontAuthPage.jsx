@@ -55,31 +55,66 @@ const TEACHER_DESIGNATIONS = [
   'Dean / Directorate',
 ];
 
-export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEmail = '', redirectToLogin = false }) => {
-  const [activeTab, setActiveTab] = useState(redirectToLogin ? 'LOGIN' : 'SIGNUP'); // Defaults to LOGIN if redirected
+const DRAFT_KEY = 'back2u_signup_draft_v1';
+
+export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEmail = '' }) => {
+  // Always default to SIGNUP tab so users can complete their details after email verification
+  const [activeTab, setActiveTab] = useState('SIGNUP');
+
+  // Load any previously typed signup draft so opening email in new tab doesn't wipe fields
+  const getDraft = () => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  };
+  const draft = getDraft();
 
   // --- LOGIN STATE ---
   const [loginEmail, setLoginEmail] = useState(initialVerifiedEmail || '');
   const [loginError, setLoginError] = useState('');
 
   // --- SIGNUP STATE ---
-  const [role, setRole] = useState('STUDENT');
-  const [name, setName] = useState('');
-  const [signupEmail, setSignupEmail] = useState(initialVerifiedEmail || '');
-  const [mobile, setMobile] = useState('');
-  const [admissionNumber, setAdmissionNumber] = useState('');
-  const [branch, setBranch] = useState(BRANCHES[0]);
-  const [section, setSection] = useState('');
-  const [semesterOrDesignation, setSemesterOrDesignation] = useState('3rd Semester');
-  const [rollNumber, setRollNumber] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
+  const [role, setRole] = useState(draft.role || 'STUDENT');
+  const [name, setName] = useState(draft.name || '');
+  const [signupEmail, setSignupEmail] = useState(initialVerifiedEmail || draft.signupEmail || '');
+  const [mobile, setMobile] = useState(draft.mobile || '');
+  const [admissionNumber, setAdmissionNumber] = useState(draft.admissionNumber || '');
+  const [branch, setBranch] = useState(draft.branch || BRANCHES[0]);
+  const [section, setSection] = useState(draft.section || '');
+  const [semesterOrDesignation, setSemesterOrDesignation] = useState(draft.semesterOrDesignation || '3rd Semester');
+  const [rollNumber, setRollNumber] = useState(draft.rollNumber || '');
+  const [avatarUrl, setAvatarUrl] = useState(draft.avatarUrl || '');
   const [signupError, setSignupError] = useState('');
 
   // Verification Link States
-  const [isEmailVerified, setIsEmailVerified] = useState(Boolean(initialVerifiedEmail));
+  const [isEmailVerified, setIsEmailVerified] = useState(
+    Boolean(initialVerifiedEmail) || Boolean(signupEmail && emailService.isEmailVerified(signupEmail))
+  );
   const [isSendingLink, setIsSendingLink] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
   const [sentMessage, setSentMessage] = useState('');
+
+  // Persist draft in localStorage as user types
+  useEffect(() => {
+    try {
+      const data = {
+        role,
+        name,
+        signupEmail,
+        mobile,
+        admissionNumber,
+        branch,
+        section,
+        semesterOrDesignation,
+        rollNumber,
+        avatarUrl,
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+    } catch {}
+  }, [role, name, signupEmail, mobile, admissionNumber, branch, section, semesterOrDesignation, rollNumber, avatarUrl]);
 
   // When initialVerifiedEmail arrives from clicking email link
   useEffect(() => {
@@ -87,13 +122,10 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
       setSignupEmail(initialVerifiedEmail);
       setLoginEmail(initialVerifiedEmail);
       setIsEmailVerified(true);
-      if (redirectToLogin) {
-        setActiveTab('LOGIN');
-      } else {
-        setActiveTab('SIGNUP'); // Stay on SIGNUP so user can complete filling remaining details!
-      }
+      setActiveTab('SIGNUP'); // MUST ALWAYS be on SIGNUP so user can complete filling remaining details!
+      setSignupError('');
     }
-  }, [initialVerifiedEmail, redirectToLogin]);
+  }, [initialVerifiedEmail]);
 
   // Check if current signup email is verified
   useEffect(() => {
@@ -119,8 +151,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
           return true;
         });
         setLinkSent(false);
-        // CRITICAL FIX: NEVER force setActiveTab('LOGIN') here!
-        // The user is on the SIGNUP form actively filling in their remaining details (name, roll no, mobile, etc.).
+        setActiveTab('SIGNUP'); // Stay firmly on SIGNUP tab so user can complete filling details!
       }
     };
 
@@ -250,6 +281,11 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
 
     const saved = profileService.saveProfile(newProfile);
     profileService.login(saved.email);
+
+    // Clear saved signup draft once ID is created
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {}
 
     try {
       confetti({
@@ -599,9 +635,14 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
 
                     {/* Verification Status Banner (Sent to actual email) */}
                     {isEmailVerified ? (
-                      <div className="mt-2 flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 px-3.5 py-2 rounded-2xl border border-emerald-200">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Email verified! You can complete your ID below.</span>
+                      <div className="mt-2.5 flex items-start gap-2.5 text-xs font-semibold text-emerald-800 bg-emerald-50 px-3.5 py-2.5 rounded-2xl border border-emerald-300 animate-in fade-in">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="font-bold">College Email Verified!</div>
+                          <p className="text-[11px] text-emerald-700 font-normal mt-0.5">
+                            Please complete your details below (Name, Mobile, Roll Number) and click &quot;Complete ID &amp; Enter Back2U&quot; to create your Campus ID.
+                          </p>
+                        </div>
                       </div>
                     ) : linkSent ? (
                       <div className="mt-2.5 p-3.5 rounded-2xl bg-purple-50/80 border border-purple-200 space-y-1.5 animate-in fade-in duration-300">
