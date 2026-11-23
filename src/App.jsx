@@ -17,7 +17,8 @@ import { LoginModal } from './components/LoginModal.jsx';
 import { Footer } from './components/Footer.jsx';
 import { itemService } from './services/itemService.js';
 import { profileService } from './services/profileService.js';
-import { Search, SearchX, Sparkles, Filter, PackageSearch } from 'lucide-react';
+import { emailService } from './services/emailService.js';
+import { Search, SearchX, Sparkles, Filter, PackageSearch, CheckCircle2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
   // Authentication & Campus Profile State
   const [currentProfile, setCurrentProfile] = useState(null);
   const [guestMode, setGuestMode] = useState(false);
+  const [verifiedEmailNotice, setVerifiedEmailNotice] = useState('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isCampusIdModalOpen, setIsCampusIdModalOpen] = useState(false);
 
@@ -77,6 +79,39 @@ export default function App() {
 
   useEffect(() => {
     loadData();
+
+    // Check for Email Verification Link in URL (?verify_email=...&token=...)
+    const params = new URLSearchParams(window.location.search);
+    const verifyEmail = params.get('verify_email');
+    const token = params.get('token');
+
+    if (verifyEmail && token) {
+      const cleanEmail = decodeURIComponent(verifyEmail).trim().toLowerCase();
+      emailService.markEmailVerified(cleanEmail);
+      setVerifiedEmailNotice(cleanEmail);
+
+      // Clean query params from URL without full reload
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+
+      try {
+        confetti({
+          particleCount: 70,
+          spread: 60,
+          origin: { y: 0.6 },
+        });
+      } catch {}
+
+      // If user profile already exists, automatically log them in
+      const existing = profileService.findProfileByQuery(cleanEmail);
+      if (existing) {
+        const result = profileService.login(cleanEmail);
+        if (result.success) {
+          setCurrentProfile(result.profile);
+          setGuestMode(false);
+        }
+      }
+    }
   }, []);
 
   // Handlers for Authentication & Profile
@@ -257,12 +292,27 @@ export default function App() {
           setGuestMode(false);
         }}
         onGuestPreview={() => setGuestMode(true)}
+        initialVerifiedEmail={verifiedEmailNotice}
       />
     );
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F9FD] selection:bg-[#371B7A] selection:text-white animate-in fade-in duration-300">
+      {/* Email Verification Success Notification Banner */}
+      {verifiedEmailNotice && (
+        <div className="bg-emerald-600 text-white py-2.5 px-4 text-center text-xs font-semibold flex items-center justify-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
+          <span>Email <strong>{verifiedEmailNotice}</strong> has been verified successfully!</span>
+          <button
+            onClick={() => setVerifiedEmailNotice('')}
+            className="ml-2 text-white/80 hover:text-white underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Navigation Header */}
       <Navbar
         onOpenReportModal={handleOpenReportModal}

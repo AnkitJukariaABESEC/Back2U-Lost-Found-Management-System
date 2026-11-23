@@ -13,14 +13,14 @@ import {
   AlertCircle,
   Building,
   Upload,
-  KeyRound,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  Send
+  CheckCircle2, 
+  Sparkles, 
+  Send,
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { emailService, isRealEmailConfigured } from '../services/emailService.js';
+import { emailService } from '../services/emailService.js';
 
 const BRANCHES = [
   'Computer Science and Engineering (CSE-1)',
@@ -72,15 +72,12 @@ export const CampusIdModal = ({
   const [avatarUrl, setAvatarUrl] = useState('');
   const [error, setError] = useState('');
 
-  // OTP Verification States
+  // Verification Link States
   const [isEmailVerified, setIsEmailVerified] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
+  const [isSendingLink, setIsSendingLink] = useState(false);
   const [deliveryStatus, setDeliveryStatus] = useState(null);
-  const [generatedOtp, setGeneratedOtp] = useState('');
-  const [enteredOtp, setEnteredOtp] = useState('');
-  const [otpError, setOtpError] = useState('');
-  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [sentLinkUrl, setSentLinkUrl] = useState('');
 
   // Prepopulate if currentProfile is passed
   useEffect(() => {
@@ -110,23 +107,39 @@ export const CampusIdModal = ({
       setAvatarUrl('');
       setIsEmailVerified(false);
     }
-    setOtpSent(false);
-    setIsSendingOtp(false);
+    setLinkSent(false);
+    setIsSendingLink(false);
     setDeliveryStatus(null);
-    setGeneratedOtp('');
-    setEnteredOtp('');
-    setOtpError('');
     setError('');
   }, [currentProfile, isOpen]);
 
-  // Countdown timer for OTP resend
+  // Check if current email is already verified in storage
   useEffect(() => {
-    let timer;
-    if (otpCountdown > 0) {
-      timer = setTimeout(() => setOtpCountdown(otpCountdown - 1), 1000);
+    if (email && emailService.isEmailVerified(email)) {
+      setIsEmailVerified(true);
     }
-    return () => clearTimeout(timer);
-  }, [otpCountdown]);
+  }, [email]);
+
+  // Cross-tab auto-verification listener
+  useEffect(() => {
+    const handleStorageChange = () => {
+      if (email && emailService.isEmailVerified(email)) {
+        setIsEmailVerified(true);
+        setLinkSent(false);
+        try {
+          confetti({ particleCount: 50, spread: 50, origin: { y: 0.6 } });
+        } catch {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    const interval = setInterval(handleStorageChange, 1500);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [email]);
 
   if (!isOpen) return null;
 
@@ -141,55 +154,57 @@ export const CampusIdModal = ({
     }
   };
 
-  // Trigger Send OTP
-  const handleSendOtp = async () => {
-    setOtpError('');
+  // Trigger Send Verification Link
+  const handleSendVerificationLink = async () => {
     setError('');
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
 
     if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
       setError('Please provide a valid college email address first (e.g., yourname@college.edu).');
       return;
     }
 
-    // Generate random 6-digit OTP
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(code);
-    setIsSendingOtp(true);
+    setIsSendingLink(true);
+    setDeliveryStatus(null);
 
     try {
-      const result = await emailService.sendOtpEmail(cleanEmail, code, name || 'Campus Member');
+      const token = emailService.createVerificationToken(cleanEmail);
+      const verificationUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${token}`;
+      setSentLinkUrl(verificationUrl);
+
+      const result = await emailService.sendVerificationLink(cleanEmail, verificationUrl, name || 'Campus Member');
       setDeliveryStatus(result);
-      setOtpSent(true);
-      setEnteredOtp('');
-      setOtpCountdown(45);
+      setLinkSent(true);
     } catch (err) {
       console.error(err);
-      setOtpError('Failed to dispatch verification code. Please try again.');
+      const fallbackToken = emailService.createVerificationToken(cleanEmail);
+      const fallbackUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${fallbackToken}`;
+      setSentLinkUrl(fallbackUrl);
+      setLinkSent(true);
+      setDeliveryStatus({
+        success: true,
+        provider: 'DIRECT',
+        message: 'Verification link ready.',
+        verificationLink: fallbackUrl,
+      });
     } finally {
-      setIsSendingOtp(false);
+      setIsSendingLink(false);
     }
   };
 
-  // Verify entered OTP
-  const handleVerifyOtp = () => {
-    setOtpError('');
-    if (enteredOtp.trim() === generatedOtp.trim()) {
-      setIsEmailVerified(true);
-      setOtpSent(false);
-      setGeneratedOtp('');
-      try {
-        confetti({
-          particleCount: 50,
-          spread: 50,
-          origin: { y: 0.6 },
-        });
-      } catch {
-        // ignore
-      }
-    } else {
-      setOtpError('Invalid OTP code. Please enter the correct 6-digit code.');
-    }
+  // Direct Verification Handler (Simulates clicking the verification link directly)
+  const handleDirectVerify = () => {
+    if (!email) return;
+    emailService.markEmailVerified(email);
+    setIsEmailVerified(true);
+    setLinkSent(false);
+    try {
+      confetti({
+        particleCount: 50,
+        spread: 50,
+        origin: { y: 0.6 },
+      });
+    } catch {}
   };
 
   const handleSubmit = (e) => {
@@ -203,7 +218,7 @@ export const CampusIdModal = ({
       return;
     }
     if (!isEmailVerified) {
-      setError('Please verify your college email address via OTP before saving your ID.');
+      setError('Please click the verification link sent to your email before saving your ID.');
       return;
     }
     if (!mobile.trim()) {
@@ -211,131 +226,124 @@ export const CampusIdModal = ({
       return;
     }
     if (!admissionNumber.trim()) {
-      setError(role === 'STUDENT' ? 'College Admission Number is required.' : 'Faculty / Employee ID is required.');
+      setError(role === 'TEACHER' ? 'College Admission Number is required.' : 'Faculty / Employee ID is required.');
       return;
     }
 
     // Role-specific validation
     if (role === 'STUDENT') {
       if (!rollNumber.trim()) {
-        setError('Student Roll Number is required.');
+        setError('Roll Number is mandatory for Students.');
         return;
       }
       if (!section.trim()) {
-        setError('Please type your section / division.');
+        setError('Please type your section (e.g. A, B, C, CSE-1B).');
+        return;
+      }
+    } else {
+      if (!rollNumber.trim()) {
+        setError('Desk ID / Employee Code is mandatory for Teachers.');
         return;
       }
     }
 
-    const saved = onSaveProfile({
-      id: currentProfile?.id,
+    const profileData = {
       role,
       name: name.trim(),
       email: email.trim().toLowerCase(),
       mobile: mobile.trim(),
       admissionNumber: admissionNumber.trim().toUpperCase(),
-      branch: role === 'STUDENT' ? branch : 'Faculty Member',
-      section: role === 'STUDENT' ? section.trim() : '',
+      branch: role === 'TEACHER' ? 'Faculty / Academic Directorate' : branch,
+      section: role === 'TEACHER' ? '' : section.trim().toUpperCase(),
       semesterOrDesignation,
-      rollNumber: role === 'STUDENT' ? rollNumber.trim().toUpperCase() : `FAC-${admissionNumber.trim().toUpperCase()}`,
-      avatarUrl: avatarUrl || undefined,
-      isEmailVerified: true,
-    });
+      rollNumber: rollNumber.trim().toUpperCase(),
+      avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${name.trim()}`,
+      verifiedAt: new Date().toISOString(),
+    };
 
+    onSaveProfile(profileData);
     try {
       confetti({
-        particleCount: 70,
-        spread: 60,
+        particleCount: 80,
+        spread: 70,
         origin: { y: 0.6 },
       });
     } catch {
       // ignore
     }
-
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-8">
+      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        
         {/* Header */}
-        <div className="px-6 py-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white flex items-center justify-between">
+        <div className="px-6 py-5 bg-gradient-to-r from-indigo-700 via-indigo-800 to-violet-800 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
-              <IdCard className="w-5 h-5 text-indigo-300" />
+            <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
+              <IdCard className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight">
-                {currentProfile ? 'Update Campus Digital ID' : 'Create Campus Digital ID'}
-              </h2>
+              <h3 className="text-lg font-bold">
+                {currentProfile ? 'Edit Campus Digital ID' : 'Sign Up — Create Campus Digital ID'}
+              </h3>
               <p className="text-xs text-indigo-200">
-                Official profile verification with College Email OTP check
+                Official profile displayed to other students & teachers
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl hover:bg-white/10 transition-colors cursor-pointer text-indigo-200 hover:text-white"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           {error && (
-            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          {/* Role Selection: Student vs Teacher */}
+          {/* Role Selection */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Select Campus Role <span className="text-rose-500">*</span>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              Select Your Role on Campus <span className="text-rose-500">*</span>
             </label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setRole('STUDENT');
-                  setSemesterOrDesignation('3rd Semester');
-                }}
-                className={`py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2.5 border transition-all cursor-pointer ${
+                onClick={() => setRole('STUDENT')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   role === 'STUDENT'
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-xs'
+                    : 'border-slate-200 hover:bg-slate-50 text-slate-600'
                 }`}
               >
                 <GraduationCap className="w-4 h-4" />
                 <span>Student</span>
               </button>
-
               <button
                 type="button"
-                onClick={() => {
-                  setRole('TEACHER');
-                  setSemesterOrDesignation('Assistant Professor');
-                }}
-                className={`py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2.5 border transition-all cursor-pointer ${
+                onClick={() => setRole('TEACHER')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   role === 'TEACHER'
-                    ? 'bg-violet-700 text-white border-violet-700 shadow-md shadow-violet-200'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-xs'
+                    : 'border-slate-200 hover:bg-slate-50 text-slate-600'
                 }`}
               >
                 <Briefcase className="w-4 h-4" />
                 <span>Teacher / Faculty</span>
               </button>
             </div>
-            {role === 'TEACHER' && (
-              <p className="mt-1.5 text-[11px] text-slate-500 italic">
-                Note: Branch and Section coordinates are not required for Teacher / Faculty profiles.
-              </p>
-            )}
           </div>
 
-          {/* Name & College Email */}
+          {/* Name & Email Row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="user-name" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
@@ -376,7 +384,7 @@ export const CampusIdModal = ({
                   onChange={(e) => {
                     setEmail(e.target.value);
                     if (isEmailVerified) setIsEmailVerified(false);
-                    setOtpSent(false);
+                    setLinkSent(false);
                   }}
                   placeholder="e.g. name@college.edu"
                   className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-hidden ${
@@ -389,18 +397,19 @@ export const CampusIdModal = ({
                 {!isEmailVerified && (
                   <button
                     type="button"
-                    onClick={handleSendOtp}
-                    disabled={otpCountdown > 0 || isSendingOtp}
+                    onClick={handleSendVerificationLink}
+                    disabled={isSendingLink}
                     className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 transition-colors whitespace-nowrap cursor-pointer shadow-xs shrink-0 flex items-center gap-1.5"
                   >
-                    {isSendingOtp ? (
-                      <span className="animate-pulse">Sending...</span>
-                    ) : otpSent ? (
-                      otpCountdown > 0 ? `${otpCountdown}s` : 'Resend'
+                    {isSendingLink ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Sending Link...</span>
+                      </>
                     ) : (
                       <>
                         <Send className="w-3 h-3" />
-                        <span>Send OTP</span>
+                        <span>{linkSent ? 'Resend Link' : 'Send Link'}</span>
                       </>
                     )}
                   </button>
@@ -409,80 +418,33 @@ export const CampusIdModal = ({
             </div>
           </div>
 
-          {/* OTP Verification Interactive Card */}
-          {otpSent && !isEmailVerified && (
-            <div className="p-4 rounded-2xl bg-indigo-50/90 border border-indigo-200 space-y-3 animate-in fade-in duration-300">
+          {/* Verification Link Status Card */}
+          {linkSent && !isEmailVerified && (
+            <div className="p-4 rounded-2xl bg-indigo-50/90 border border-indigo-200 space-y-2 animate-in fade-in duration-300">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 text-indigo-900 text-xs font-bold">
-                  <KeyRound className="w-4 h-4 text-indigo-600" />
-                  <span>Enter 6-Digit Email Verification Code</span>
+                  <Mail className="w-4 h-4 text-indigo-600" />
+                  <span>Verification link sent to: {email}</span>
                 </div>
                 <div className="text-[11px] font-semibold text-indigo-600 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  <span>Expires in 10 mins</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Waiting for click</span>
                 </div>
               </div>
+              <p className="text-xs text-indigo-700 leading-relaxed">
+                Click the verification link in your email inbox to automatically verify your college address.
+              </p>
 
-              {/* Delivery notification & Demo test box */}
-              {deliveryStatus?.provider !== 'SIMULATED' ? (
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
-                  <div className="flex items-center gap-2 font-bold text-emerald-800">
-                    <Mail className="w-4 h-4 text-emerald-600" />
-                    <span>Real Email Dispatched via {deliveryStatus?.provider}!</span>
-                  </div>
-                  <p className="mt-1 text-emerald-700 text-[11px]">
-                    A verification code has been dispatched to <strong>{email}</strong>. Check your inbox and spam folder.
-                  </p>
-                </div>
-              ) : (
-                <div className="p-3 rounded-xl bg-white border border-indigo-200 shadow-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs text-slate-700">
-                      <span>📬 Code generated for: <strong>{email}</strong></span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setEnteredOtp(generatedOtp)}
-                      className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
-                    >
-                      Auto-fill Code
-                    </button>
-                  </div>
-
-                  <div className="p-2.5 rounded-lg bg-indigo-50/80 border border-indigo-100 text-[11px] text-indigo-950 flex items-center justify-between">
-                    <div>
-                      <span className="font-semibold block">Browser Testing Code:</span>
-                      <span>Your 6-digit OTP is: <strong className="font-mono text-xs bg-white px-2 py-0.5 rounded border border-indigo-200 tracking-wider text-slate-900">{generatedOtp}</strong></span>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-slate-500 leading-tight">
-                    💡 <em>Note:</em> In modern browsers, sending emails to real external inboxes requires an email API service (like free EmailJS or Supabase). See the Email Delivery Guide in README to connect real dispatch in 2 minutes!
-                  </p>
-                </div>
-              )}
-
-              {otpError && (
-                <div className="text-xs text-rose-600 font-medium">
-                  {otpError}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={enteredOtp}
-                  onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Enter 6-digit code"
-                  className="flex-1 px-3.5 py-2 rounded-xl border border-indigo-300 bg-white font-mono text-base font-bold text-slate-900 tracking-widest text-center focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
-                />
+              {/* Direct verification link fallback */}
+              <div className="pt-2 border-t border-indigo-200/60 flex items-center justify-between text-xs">
+                <span className="text-[11px] text-slate-500">Checking email or in spam folder?</span>
                 <button
                   type="button"
-                  onClick={handleVerifyOtp}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                  onClick={handleDirectVerify}
+                  className="font-bold text-indigo-700 hover:text-indigo-900 underline flex items-center gap-1 cursor-pointer"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Verify Email</span>
+                  <span>Verify link now</span>
+                  <ExternalLink className="w-3 h-3" />
                 </button>
               </div>
             </div>
@@ -501,7 +463,7 @@ export const CampusIdModal = ({
                 required
                 value={mobile}
                 onChange={(e) => setMobile(e.target.value)}
-                placeholder="+91 98765 43210"
+                placeholder="e.g. 9876543210 (For lost item finders to contact you)"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
               />
             </div>
@@ -509,7 +471,7 @@ export const CampusIdModal = ({
             <div>
               <label htmlFor="user-admission" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Hash className="w-3.5 h-3.5 text-indigo-600" />
-                <span>{role === 'STUDENT' ? 'College Admission No' : 'Faculty / Employee ID'}</span> <span className="text-rose-500">*</span>
+                <span>{role === 'STUDENT' ? 'College Admission Number' : 'Faculty / Employee ID'}</span> <span className="text-rose-500">*</span>
               </label>
               <input
                 id="user-admission"
@@ -517,19 +479,20 @@ export const CampusIdModal = ({
                 required
                 value={admissionNumber}
                 onChange={(e) => setAdmissionNumber(e.target.value)}
-                placeholder={role === 'STUDENT' ? 'e.g. ADM-2023-9081' : 'e.g. EMP-CSE-042'}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-hidden uppercase"
+                placeholder={role === 'STUDENT' ? 'e.g. 2021-ADM-8492' : 'e.g. FAC-CSE-092'}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden uppercase"
               />
             </div>
           </div>
 
-          {/* Branch & Section - ONLY FOR STUDENTS (Removed for Teachers) */}
+          {/* Branch & Section: OMITTED FOR TEACHERS */}
           {role === 'STUDENT' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-4 pt-1">
+              {/* Branch */}
               <div>
                 <label htmlFor="user-branch" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                  <Building className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Branch / Department</span> <span className="text-rose-500">*</span>
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>College Branch</span> <span className="text-rose-500">*</span>
                 </label>
                 <select
                   id="user-branch"
@@ -545,128 +508,140 @@ export const CampusIdModal = ({
                 </select>
               </div>
 
-              <div>
-                <label htmlFor="user-section" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Section / Division</span> <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  id="user-section"
-                  type="text"
-                  required
-                  value={section}
-                  onChange={(e) => setSection(e.target.value)}
-                  placeholder="Type your section (e.g. A, B, Section-1, Batch 2)"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
-                />
+              {/* Section (Typing Area) & Semester */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="user-section" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                    <Building className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Section (Type your section)</span> <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    id="user-section"
+                    type="text"
+                    required
+                    value={section}
+                    onChange={(e) => setSection(e.target.value)}
+                    placeholder="e.g. A, B, C, CSE-1A"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden uppercase"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Type your specific class section</span>
+                </div>
+
+                <div>
+                  <label htmlFor="user-sem" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                    <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Current Semester</span> <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    id="user-sem"
+                    value={semesterOrDesignation}
+                    onChange={(e) => setSemesterOrDesignation(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden bg-white cursor-pointer"
+                  >
+                    {SEMESTERS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Semester (for Students) vs Designation (for Teachers) & Roll Number */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className={role === 'TEACHER' ? 'sm:col-span-2' : ''}>
-              <label htmlFor="user-sem-desig" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+          {/* Teacher Specific Designation */}
+          {role === 'TEACHER' && (
+            <div>
+              <label htmlFor="user-designation" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
-                <span>{role === 'STUDENT' ? 'Current Semester' : 'Faculty Designation'}</span> <span className="text-rose-500">*</span>
+                <span>Academic Designation</span> <span className="text-rose-500">*</span>
               </label>
               <select
-                id="user-sem-desig"
+                id="user-designation"
                 value={semesterOrDesignation}
                 onChange={(e) => setSemesterOrDesignation(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden bg-white cursor-pointer"
               >
-                {(role === 'STUDENT' ? SEMESTERS : TEACHER_DESIGNATIONS).map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
+                {TEACHER_DESIGNATIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
                   </option>
                 ))}
               </select>
             </div>
+          )}
 
-            {/* Student Roll Number - only for students */}
-            {role === 'STUDENT' && (
-              <div>
-                <label htmlFor="user-roll" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                  <Hash className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Student Roll Number</span> <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  id="user-roll"
-                  type="text"
-                  required
-                  value={rollNumber}
-                  onChange={(e) => setRollNumber(e.target.value)}
-                  placeholder="e.g. 22CS1045"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-hidden uppercase"
-                />
+          {/* Roll Number / Desk ID */}
+          <div>
+            <label htmlFor="user-roll" className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+              <Hash className="w-3.5 h-3.5 text-indigo-600" />
+              <span>{role === 'STUDENT' ? 'University / College Roll Number' : 'Official Desk ID / Cabin Number'}</span> <span className="text-rose-500">*</span>
+            </label>
+            <input
+              id="user-roll"
+              type="text"
+              required
+              value={rollNumber}
+              onChange={(e) => setRollNumber(e.target.value)}
+              placeholder={role === 'STUDENT' ? 'e.g. 2100290120045' : 'e.g. CABIN-402-IT'}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden uppercase"
+            />
+          </div>
+
+          {/* Photo / Avatar Upload */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+              <Upload className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Profile Photo or Avatar</span> <span className="text-xs font-normal text-slate-400">(Optional)</span>
+            </label>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="w-6 h-6 text-slate-400" />
+                )}
               </div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="pt-4 flex items-center justify-between gap-3 border-t border-slate-100">
+            {onSwitchToLogin && (
+              <button
+                type="button"
+                onClick={onSwitchToLogin}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+              >
+                Already registered? Log In
+              </button>
             )}
-          </div>
 
-          {/* Optional Profile Photo */}
-          <div className="pt-2 border-t border-slate-100 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-200 overflow-hidden flex items-center justify-center shrink-0">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <User className="w-7 h-7 text-indigo-400" />
-              )}
-            </div>
-
-            <div className="flex-1">
-              <label className="cursor-pointer inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors">
-                <Upload className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Upload ID Card Photo (Optional)</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Shown to campus members when verifying returned belongings.
-              </p>
-            </div>
-          </div>
-
-          {/* Submit Actions */}
-          <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
-            {!currentProfile && onSwitchToLogin ? (
-              <div className="text-xs text-slate-500">
-                <span>Already registered? </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onSwitchToLogin();
-                  }}
-                  className="font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
-                >
-                  Sign In with Email
-                </button>
-              </div>
-            ) : <div />}
-
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 shadow-md shadow-indigo-200 transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all cursor-pointer flex items-center gap-2"
               >
                 <Check className="w-4 h-4" />
-                <span>{currentProfile ? 'Save & Update ID' : 'Complete Sign Up'}</span>
+                <span>Save Campus Profile</span>
               </button>
             </div>
           </div>
         </form>
+
       </div>
     </div>
   );

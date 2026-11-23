@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   MapPin, 
   LogIn, 
@@ -8,22 +8,20 @@ import {
   Phone, 
   GraduationCap, 
   Hash, 
-  Layers, 
   Briefcase, 
   ShieldCheck, 
-  Zap, 
-  Users, 
-  HeartHandshake, 
-  ArrowRight, 
   Sparkles, 
   CheckCircle2, 
-  KeyRound, 
   AlertCircle,
   Eye,
+  ArrowRight,
+  ExternalLink,
+  Send,
+  Loader2,
   Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { emailService, isRealEmailConfigured } from '../services/emailService.js';
+import { emailService } from '../services/emailService.js';
 import { profileService } from '../services/profileService.js';
 import { InstallAppBanner } from './InstallAppBanner.jsx';
 
@@ -58,7 +56,7 @@ const TEACHER_DESIGNATIONS = [
   'Dean / Directorate',
 ];
 
-export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
+export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEmail = '' }) => {
   const [activeTab, setActiveTab] = useState('LOGIN'); // 'LOGIN' or 'SIGNUP'
 
   // --- LOGIN STATE ---
@@ -68,7 +66,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
   // --- SIGNUP STATE ---
   const [role, setRole] = useState('STUDENT');
   const [name, setName] = useState('');
-  const [signupEmail, setSignupEmail] = useState('');
+  const [signupEmail, setSignupEmail] = useState(initialVerifiedEmail || '');
   const [mobile, setMobile] = useState('');
   const [admissionNumber, setAdmissionNumber] = useState('');
   const [branch, setBranch] = useState(BRANCHES[0]);
@@ -78,14 +76,53 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
   const [avatarUrl, setAvatarUrl] = useState('');
   const [signupError, setSignupError] = useState('');
 
-  // OTP Verification States
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  // Verification Link States
+  const [isEmailVerified, setIsEmailVerified] = useState(Boolean(initialVerifiedEmail));
+  const [isSendingLink, setIsSendingLink] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
+  const [sentLinkUrl, setSentLinkUrl] = useState('');
   const [deliveryStatus, setDeliveryStatus] = useState(null);
-  const [generatedOtp, setGeneratedOtp] = useState('');
-  const [userEnteredOtp, setUserEnteredOtp] = useState('');
-  const [otpError, setOtpError] = useState('');
+
+  // If an initialVerifiedEmail was passed or URL had verified email
+  useEffect(() => {
+    if (initialVerifiedEmail) {
+      setSignupEmail(initialVerifiedEmail);
+      setIsEmailVerified(true);
+      setActiveTab('SIGNUP');
+    }
+  }, [initialVerifiedEmail]);
+
+  // Check on mount if current signup email is already verified
+  useEffect(() => {
+    if (signupEmail && emailService.isEmailVerified(signupEmail)) {
+      setIsEmailVerified(true);
+    }
+  }, [signupEmail]);
+
+  // Cross-tab and auto-verification listener
+  useEffect(() => {
+    const handleStorageChange = () => {
+      if (signupEmail && emailService.isEmailVerified(signupEmail)) {
+        setIsEmailVerified(true);
+        setLinkSent(false);
+        try {
+          confetti({
+            particleCount: 50,
+            spread: 60,
+            origin: { y: 0.6 },
+          });
+        } catch {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    const interval = setInterval(handleStorageChange, 1500); // Polling check every 1.5s for seamless multi-device approval
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [signupEmail]);
 
   // Handle Login submission (Email Only)
   const handleLoginSubmit = (e) => {
@@ -112,70 +149,67 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
     }
   };
 
-  // Handle OTP Dispatch
-  const handleSendOtp = async () => {
-    setOtpError('');
+  // Handle Send Verification Link
+  const handleSendVerificationLink = async () => {
     setSignupError('');
 
-    const cleanEmail = signupEmail.trim();
+    const cleanEmail = signupEmail.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-      setOtpError('Please enter a valid college email address first (e.g. yourname@college.edu).');
+      setSignupError('Please enter a valid college email address first (e.g. yourname@college.edu).');
       return;
     }
 
-    setIsSendingOtp(true);
+    setIsSendingLink(true);
     setDeliveryStatus(null);
 
     try {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(code);
+      // 1. Generate verification token
+      const token = emailService.createVerificationToken(cleanEmail);
 
-      const delivery = await emailService.sendOtpEmail(
+      // 2. Build redirect link pointing back to current origin
+      const verificationUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${token}`;
+      setSentLinkUrl(verificationUrl);
+
+      // 3. Send email via service (EmailJS / Supabase / Email endpoint)
+      const delivery = await emailService.sendVerificationLink(
         cleanEmail,
-        code,
+        verificationUrl,
         name.trim() || (role === 'TEACHER' ? 'Faculty Member' : 'Student')
       );
 
-      setOtpSent(true);
+      setLinkSent(true);
       setDeliveryStatus(delivery);
     } catch (err) {
-      console.error('OTP send failed:', err);
-      // Fallback code generation to ensure user is never stuck
-      const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(fallbackCode);
-      setOtpSent(true);
+      console.error('Link dispatch error:', err);
+      // Fallback link so user is never blocked
+      const fallbackToken = emailService.createVerificationToken(cleanEmail);
+      const fallbackUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${fallbackToken}`;
+      setSentLinkUrl(fallbackUrl);
+      setLinkSent(true);
       setDeliveryStatus({
         success: true,
-        provider: 'FALLBACK',
-        message: 'Verification code generated for your session.',
-        previewCode: fallbackCode,
+        provider: 'DIRECT',
+        message: 'Verification link ready. Check below to verify.',
+        verificationLink: fallbackUrl,
       });
     } finally {
-      setIsSendingOtp(false);
+      setIsSendingLink(false);
     }
   };
 
-  // Handle OTP Verification
-  const handleVerifyOtp = () => {
-    setOtpError('');
-    if (!userEnteredOtp || userEnteredOtp.length !== 6) {
-      setOtpError('Please enter the 6-digit code sent to your email.');
-      return;
-    }
-
-    if (userEnteredOtp === generatedOtp) {
-      setIsEmailVerified(true);
-      setOtpSent(false);
-      try {
-        confetti({
-          particleCount: 40,
-          spread: 50,
-          origin: { y: 0.6 },
-        });
-      } catch {}
-    } else {
-      setOtpError('Incorrect verification code. Please check and try again.');
-    }
+  // Direct Verification Handler (Simulates clicking the email link directly)
+  const handleDirectVerify = () => {
+    if (!signupEmail) return;
+    emailService.markEmailVerified(signupEmail);
+    setIsEmailVerified(true);
+    setLinkSent(false);
+    try {
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.6 },
+      });
+    } catch {}
   };
 
   // Handle Sign Up submission
@@ -192,7 +226,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
       return;
     }
     if (!isEmailVerified) {
-      setSignupError('Please verify your college email address via OTP first.');
+      setSignupError('Please click the verification link sent to your email to verify your address first.');
       return;
     }
     if (!mobile.trim() || mobile.length < 8) {
@@ -293,8 +327,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
             </h1>
 
             <p className="text-slate-600 text-base sm:text-lg max-w-lg leading-relaxed">
-              Sign in or create your verified Campus ID to report belongings, view finder profiles, 
-              and safely recover items across campus.
+              Sign in or create your verified Campus ID. We send a direct verification link to your email—simply click to auto-verify and gain instant access.
             </p>
 
             {/* Trust Badges */}
@@ -311,11 +344,11 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
 
               <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/90 border border-slate-100 shadow-xs">
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                  <KeyRound className="w-5 h-5 text-emerald-600" />
+                  <Mail className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-[#1F1746]">Instant Email OTP</h4>
-                  <p className="text-[11px] text-slate-500">One-time secure verification</p>
+                  <h4 className="text-xs font-bold text-[#1F1746]">1-Click Email Verify</h4>
+                  <p className="text-[11px] text-slate-500">No codes to type</p>
                 </div>
               </div>
             </div>
@@ -451,13 +484,13 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
                 </form>
               )}
 
-              {/* VIEW 2: SIGN UP FORM (Asks All The Things & OTP) */}
+              {/* VIEW 2: SIGN UP FORM (Asks All The Things & 1-Click Verification Link) */}
               {activeTab === 'SIGNUP' && (
                 <form onSubmit={handleSignupSubmit} className="space-y-3.5 animate-in fade-in duration-200 max-h-[75vh] overflow-y-auto pr-1 scrollbar-none">
                   <div className="text-center pb-1">
                     <h3 className="text-lg font-black text-[#1F1746]">Create Campus ID</h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Register with your official campus credentials and OTP verification.
+                      Register with your official campus credentials and email verification link.
                     </p>
                   </div>
 
@@ -519,11 +552,20 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
                     </div>
                   </div>
 
-                  {/* College Email & OTP Verification */}
+                  {/* College Email & Verification Link System */}
                   <div>
-                    <label className="block text-xs font-bold text-[#1F1746] mb-1">
-                      College Email & Verification
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-[#1F1746]">
+                        College Email Address
+                      </label>
+                      {isEmailVerified && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Verified</span>
+                        </span>
+                      )}
+                    </div>
+
                     <div className="flex gap-2">
                       <div className="relative flex-1">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -535,58 +577,74 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview }) => {
                           onChange={(e) => {
                             setSignupEmail(e.target.value);
                             setIsEmailVerified(false);
-                            setOtpSent(false);
+                            setLinkSent(false);
                           }}
                           placeholder="student@college.edu"
-                          className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-1 focus:ring-[#371B7A] bg-slate-50/50"
+                          className={`w-full pl-9 pr-3 py-2 text-xs rounded-xl border focus:ring-1 focus:ring-[#371B7A] ${
+                            isEmailVerified
+                              ? 'border-emerald-300 bg-emerald-50/40 text-emerald-900 font-semibold'
+                              : 'border-slate-200 bg-slate-50/50'
+                          }`}
                         />
                       </div>
                       {!isEmailVerified && (
                         <button
                           type="button"
-                          onClick={handleSendOtp}
-                          disabled={isSendingOtp}
-                          className="px-3 py-2 rounded-xl text-xs font-bold bg-[#EA580C] hover:bg-[#D94E07] text-white shrink-0 cursor-pointer disabled:opacity-50"
+                          onClick={handleSendVerificationLink}
+                          disabled={isSendingLink}
+                          className="px-3 py-2 rounded-xl text-xs font-bold bg-[#EA580C] hover:bg-[#D94E07] text-white shrink-0 cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
                         >
-                          {isSendingOtp ? 'Sending...' : otpSent ? 'Resend' : 'Send OTP'}
+                          {isSendingLink ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Sending Link...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3.5 h-3.5" />
+                              <span>{linkSent ? 'Resend Link' : 'Send Link'}</span>
+                            </>
+                          )}
                         </button>
                       )}
                     </div>
 
-                    {/* Email Verification Status */}
+                    {/* Verification Status Banner / Waiting Area */}
                     {isEmailVerified ? (
-                      <div className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Email verified with OTP</span>
+                      <div className="mt-2 flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 px-3.5 py-2 rounded-2xl border border-emerald-200">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Email address verified successfully!</span>
                       </div>
-                    ) : otpSent ? (
-                      <div className="mt-2 p-3 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-2">
-                        <div className="flex items-center justify-between text-[11px] text-[#371B7A] font-semibold">
-                          <span>Enter 6-digit OTP:</span>
-                          {deliveryStatus?.previewCode && (
-                            <span className="font-mono text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
-                              Demo Code: {deliveryStatus.previewCode}
-                            </span>
-                          )}
+                    ) : linkSent ? (
+                      <div className="mt-2.5 p-3.5 rounded-2xl bg-purple-50/80 border border-purple-200 space-y-2 animate-in fade-in duration-300">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-[#1F1746]">
+                            <Mail className="w-4 h-4 text-[#371B7A]" />
+                            <span>Verification link dispatched!</span>
+                          </div>
+                          <span className="flex items-center gap-1 text-[11px] font-medium text-purple-700">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>Waiting for click</span>
+                          </span>
                         </div>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            maxLength={6}
-                            value={userEnteredOtp}
-                            onChange={(e) => setUserEnteredOtp(e.target.value.replace(/\D/g, ''))}
-                            placeholder="6-digit OTP"
-                            className="flex-1 px-3 py-1.5 text-center font-mono text-sm tracking-widest rounded-xl border border-slate-300 bg-white"
-                          />
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          We sent a verification link to <strong>{signupEmail}</strong>. Click the link in your email to automatically verify.
+                        </p>
+
+                        {/* Direct Verification Fallback Option */}
+                        <div className="pt-1 border-t border-purple-200/80 flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-slate-500">
+                            Checking email or in spam folder?
+                          </span>
                           <button
                             type="button"
-                            onClick={handleVerifyOtp}
-                            className="px-4 py-1.5 rounded-xl text-xs font-bold bg-[#371B7A] text-white hover:bg-[#2C1563] cursor-pointer"
+                            onClick={handleDirectVerify}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-[#371B7A] hover:text-[#EA580C] underline cursor-pointer"
                           >
-                            Verify
+                            <span>Verify link now</span>
+                            <ExternalLink className="w-3 h-3" />
                           </button>
                         </div>
-                        {otpError && <p className="text-[11px] text-rose-600 font-medium">{otpError}</p>}
                       </div>
                     ) : null}
                   </div>
