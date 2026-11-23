@@ -40,13 +40,13 @@ export default async function handler(req, res) {
         </h2>
         <p style="color: #475569; font-size: 14px; line-height: 1.6; margin: 0;">
           Hello <strong>${name}</strong>,<br/>
-          Thank you for joining Back2U! Please click the verification button below to activate your account. You will be automatically verified and redirected to the login page.
+          Thank you for joining Back2U! Please click the verification button below to verify your email address. Once verified, your email will be confirmed and you can complete setting up your Campus ID.
         </p>
       </div>
 
       <div style="text-align: center; margin: 32px 0;">
         <a href="${verificationLink}" target="_blank" rel="noopener noreferrer" style="background-color: #371B7A; color: #ffffff; padding: 15px 36px; text-decoration: none; border-radius: 9999px; font-weight: 700; font-size: 15px; display: inline-block; box-shadow: 0 6px 16px rgba(55, 27, 122, 0.28); transition: all 0.2s;">
-          Verify Email &amp; Proceed to Login &rarr;
+          Verify College Email &rarr;
         </a>
       </div>
 

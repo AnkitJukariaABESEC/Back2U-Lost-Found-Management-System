@@ -124,11 +124,15 @@ export const CampusIdModal = ({
   useEffect(() => {
     const handleStorageChange = () => {
       if (email && emailService.isEmailVerified(email)) {
-        setIsEmailVerified(true);
+        setIsEmailVerified((prev) => {
+          if (!prev) {
+            try {
+              confetti({ particleCount: 50, spread: 50, origin: { y: 0.6 } });
+            } catch {}
+          }
+          return true;
+        });
         setLinkSent(false);
-        try {
-          confetti({ particleCount: 50, spread: 50, origin: { y: 0.6 } });
-        } catch {}
       }
     };
 

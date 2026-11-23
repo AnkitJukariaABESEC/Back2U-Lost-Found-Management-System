@@ -87,9 +87,13 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
       setSignupEmail(initialVerifiedEmail);
       setLoginEmail(initialVerifiedEmail);
       setIsEmailVerified(true);
-      setActiveTab('LOGIN'); // Auto-redirects to Login tab as requested!
+      if (redirectToLogin) {
+        setActiveTab('LOGIN');
+      } else {
+        setActiveTab('SIGNUP'); // Stay on SIGNUP so user can complete filling remaining details!
+      }
     }
-  }, [initialVerifiedEmail]);
+  }, [initialVerifiedEmail, redirectToLogin]);
 
   // Check if current signup email is verified
   useEffect(() => {
@@ -102,17 +106,21 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
   useEffect(() => {
     const handleStorageChange = () => {
       if (signupEmail && emailService.isEmailVerified(signupEmail)) {
-        setIsEmailVerified(true);
+        setIsEmailVerified((prev) => {
+          if (!prev) {
+            try {
+              confetti({
+                particleCount: 60,
+                spread: 60,
+                origin: { y: 0.6 },
+              });
+            } catch {}
+          }
+          return true;
+        });
         setLinkSent(false);
-        setActiveTab('LOGIN');
-        setLoginEmail(signupEmail);
-        try {
-          confetti({
-            particleCount: 60,
-            spread: 60,
-            origin: { y: 0.6 },
-          });
-        } catch {}
+        // CRITICAL FIX: NEVER force setActiveTab('LOGIN') here!
+        // The user is on the SIGNUP form actively filling in their remaining details (name, roll no, mobile, etc.).
       }
     };
 
@@ -167,8 +175,8 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
       // 1. Generate token
       const token = emailService.createVerificationToken(cleanEmail);
 
-      // 2. Build verification link with redirect to login
-      const verificationUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${token}&action=redirect_login`;
+      // 2. Build verification link
+      const verificationUrl = `${window.location.origin}/?verify_email=${encodeURIComponent(cleanEmail)}&token=${token}`;
 
       // 3. Dispatch directly to recipient's email address
       const delivery = await emailService.sendVerificationLink(
@@ -603,7 +611,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                         </div>
                         <p className="text-xs text-slate-600 leading-relaxed">
                           We sent a verification link to <strong>{signupEmail}</strong>.
-                          Please open your email inbox (and spam folder), and click the link to automatically verify and redirect to login.
+                          Please open your email inbox (and spam folder), and click the link to verify your email and complete your signup details.
                         </p>
                         <div className="flex items-center gap-1.5 text-[11px] font-semibold text-purple-700 pt-1">
                           <Clock className="w-3.5 h-3.5 text-purple-600" />
