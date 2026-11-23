@@ -1,22 +1,28 @@
 import { useState, useEffect } from 'react';
-import { Smartphone, Download, X, CheckCircle2 } from 'lucide-react';
+import { Smartphone, Download, X } from 'lucide-react';
 
 export const InstallAppBanner = () => {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem('pwa_install_dismissed') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [isVisible, setIsVisible] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
+    // If user already dismissed it this session, don't show
+    if (isDismissed) return;
+
     const handleBeforeInstallPrompt = (e) => {
       // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
       // Stash the event so it can be triggered later
       setDeferredPrompt(e);
-      // Check if user dismissed it in this session
-      const dismissed = sessionStorage.getItem('pwa_install_dismissed');
-      if (!dismissed) {
-        setIsVisible(true);
-      }
+      setIsVisible(true);
     };
 
     const handleAppInstalled = () => {
@@ -32,7 +38,7 @@ export const InstallAppBanner = () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []);
+  }, [isDismissed]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -44,16 +50,29 @@ export const InstallAppBanner = () => {
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
       setIsVisible(false);
+      setIsInstalled(true);
     }
     setDeferredPrompt(null);
   };
 
-  const handleDismiss = () => {
+  const handleDismiss = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setIsVisible(false);
-    sessionStorage.setItem('pwa_install_dismissed', 'true');
+    setIsDismissed(true);
+    try {
+      sessionStorage.setItem('pwa_install_dismissed', 'true');
+    } catch {
+      // ignore
+    }
   };
 
-  if (!isVisible && !deferredPrompt) return null;
+  // If dismissed, not visible, installed, or no install prompt available: hide completely
+  if (isDismissed || !isVisible || isInstalled) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 sm:max-w-md z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -75,18 +94,22 @@ export const InstallAppBanner = () => {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
+            type="button"
             onClick={handleInstallClick}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-[#EA580C] hover:bg-[#D94E07] shadow-sm transition-all cursor-pointer active:scale-95"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Install</span>
           </button>
+          
           <button
+            type="button"
             onClick={handleDismiss}
-            className="p-1.5 text-purple-300 hover:text-white cursor-pointer rounded-full hover:bg-white/10"
-            title="Dismiss"
+            className="p-2 text-purple-300 hover:text-white cursor-pointer rounded-full hover:bg-white/10 active:scale-90 transition-all"
+            title="Close"
+            aria-label="Close install prompt"
           >
             <X className="w-4 h-4" />
           </button>
