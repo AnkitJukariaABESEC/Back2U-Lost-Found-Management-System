@@ -57,6 +57,7 @@ export const CampusIdModal = ({
   isOpen,
   onClose,
   currentProfile,
+  initialEmail = '',
   onSaveProfile,
   onSwitchToLogin,
 }) => {
@@ -79,7 +80,7 @@ export const CampusIdModal = ({
   const [deliveryStatus, setDeliveryStatus] = useState(null);
   const [sentLinkUrl, setSentLinkUrl] = useState('');
 
-  // Prepopulate if currentProfile is passed
+  // Prepopulate if currentProfile is passed or initialEmail is provided
   useEffect(() => {
     if (currentProfile) {
       setRole(currentProfile.role || 'STUDENT');
@@ -97,7 +98,8 @@ export const CampusIdModal = ({
       // Default reset
       setRole('STUDENT');
       setName('');
-      setEmail('');
+      const targetEmail = initialEmail || '';
+      setEmail(targetEmail);
       setMobile('');
       setAdmissionNumber('');
       setBranch(BRANCHES[0]);
@@ -105,13 +107,13 @@ export const CampusIdModal = ({
       setSemesterOrDesignation('3rd Semester');
       setRollNumber('');
       setAvatarUrl('');
-      setIsEmailVerified(false);
+      setIsEmailVerified(Boolean(targetEmail && emailService.isEmailVerified(targetEmail)));
     }
     setLinkSent(false);
     setIsSendingLink(false);
     setDeliveryStatus(null);
     setError('');
-  }, [currentProfile, isOpen]);
+  }, [currentProfile, isOpen, initialEmail]);
 
   // Check if current email is already verified in storage
   useEffect(() => {

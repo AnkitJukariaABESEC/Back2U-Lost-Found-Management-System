@@ -127,22 +127,22 @@ export const Navbar = ({
             {/* Authentication Buttons: Login / Signup / Logout */}
             {!currentProfile ? (
               <div className="flex items-center gap-1.5 sm:gap-2">
-                {/* Single Login / Sign Up Pill Button matching the reference image */}
+                {/* Login Button */}
                 <button
                   onClick={onOpenLoginModal}
-                  className="inline-flex items-center gap-1.5 px-4 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-semibold text-[#371B7A] hover:bg-purple-50/80 border border-[#371B7A]/30 transition-all cursor-pointer active:scale-95"
+                  className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-[#371B7A] hover:bg-purple-50/80 border border-[#371B7A]/30 transition-all cursor-pointer active:scale-95 shadow-xs"
                 >
                   <LogIn className="w-3.5 h-3.5 text-[#371B7A]" />
-                  <span>Login / Sign Up</span>
+                  <span>Log In</span>
                 </button>
 
-                {/* Explicit Sign Up button for new campus members */}
+                {/* Sign Up Button */}
                 <button
                   onClick={onOpenSignUpModal}
-                  className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs sm:text-sm font-semibold text-white bg-[#EA580C] hover:bg-[#D94E07] shadow-xs transition-all cursor-pointer active:scale-95"
+                  className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-bold text-white bg-[#EA580C] hover:bg-[#D94E07] shadow-sm transition-all cursor-pointer active:scale-95"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
-                  <span>Register ID</span>
+                  <span>Sign Up</span>
                 </button>
               </div>
             ) : (

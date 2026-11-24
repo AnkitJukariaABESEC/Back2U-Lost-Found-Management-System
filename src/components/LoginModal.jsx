@@ -114,7 +114,7 @@ export const LoginModal = ({
               }}
               className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
             >
-              <span>Click here to Sign Up (All details & OTP)</span>
+              <span>Click here to Create Campus ID (Sign Up)</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>

@@ -5,7 +5,6 @@ import { QuickActionsRecentReports } from './components/QuickActionsRecentReport
 import { FilterBar } from './components/FilterBar.jsx';
 import { ItemCard } from './components/ItemCard.jsx';
 import { CaringCampusBanner } from './components/CaringCampusBanner.jsx';
-import { FrontAuthPage } from './components/FrontAuthPage.jsx';
 import { InstallAppBanner } from './components/InstallAppBanner.jsx';
 import { ReportItemModal } from './components/ReportItemModal.jsx';
 import { ClaimModal } from './components/ClaimModal.jsx';
@@ -28,7 +27,6 @@ export default function App() {
 
   // Authentication & Campus Profile State
   const [currentProfile, setCurrentProfile] = useState(null);
-  const [guestMode, setGuestMode] = useState(false);
   const [verifiedEmailNotice, setVerifiedEmailNotice] = useState('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isCampusIdModalOpen, setIsCampusIdModalOpen] = useState(false);
@@ -108,8 +106,10 @@ export default function App() {
         const result = profileService.login(cleanEmail);
         if (result.success) {
           setCurrentProfile(result.profile);
-          setGuestMode(false);
         }
+      } else {
+        // Open Sign Up modal immediately so user can complete registration
+        setIsCampusIdModalOpen(true);
       }
     }
   }, []);
@@ -119,7 +119,6 @@ export default function App() {
     const result = profileService.login(email);
     if (result.success) {
       setCurrentProfile(result.profile);
-      setGuestMode(false);
     }
     return result;
   };
@@ -127,13 +126,11 @@ export default function App() {
   const handleLogout = () => {
     profileService.logout();
     setCurrentProfile(null);
-    setGuestMode(false);
   };
 
   const handleSaveProfile = (profileData) => {
     const saved = profileService.saveProfile(profileData);
     setCurrentProfile(saved);
-    setGuestMode(false);
   };
 
   const handleViewProfile = (profileOrItem, itemTitle = '') => {
@@ -283,20 +280,6 @@ export default function App() {
     return counts;
   }, [items]);
 
-  // If not logged in and not explicitly exploring as guest: Show Animated Front Auth Portal Page!
-  if (!currentProfile && !guestMode) {
-    return (
-      <FrontAuthPage
-        onAuthSuccess={(profile) => {
-          setCurrentProfile(profile);
-          setGuestMode(false);
-        }}
-        onGuestPreview={() => setGuestMode(true)}
-        initialVerifiedEmail={verifiedEmailNotice}
-      />
-    );
-  }
-
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F9FD] selection:bg-[#371B7A] selection:text-white animate-in fade-in duration-300">
       {/* Email Verification Success Notification Banner */}
@@ -325,19 +308,6 @@ export default function App() {
         itemsCount={items.length}
         onScrollToBrowse={scrollToBrowse}
       />
-
-      {/* Guest Mode Banner Alert */}
-      {!currentProfile && guestMode && (
-        <div className="bg-[#371B7A] text-white py-2.5 px-4 text-center text-xs font-medium flex items-center justify-center gap-2">
-          <span>You are viewing Back2U in Guest Preview mode.</span>
-          <button
-            onClick={() => setGuestMode(false)}
-            className="underline font-bold text-[#EA580C] hover:text-orange-400 cursor-pointer"
-          >
-            Log in or Sign Up for verified actions
-          </button>
-        </div>
-      )}
 
       {/* Hero Section */}
       <HeroBanner
@@ -570,6 +540,7 @@ export default function App() {
         isOpen={isCampusIdModalOpen}
         onClose={() => setIsCampusIdModalOpen(false)}
         currentProfile={currentProfile}
+        initialEmail={verifiedEmailNotice}
         onSaveProfile={handleSaveProfile}
         onSwitchToLogin={() => {
           setIsCampusIdModalOpen(false);
