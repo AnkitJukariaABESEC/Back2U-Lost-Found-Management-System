@@ -9,6 +9,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { CATEGORIES, CAMPUS_LOCATIONS } from '../lib/constants.js';
+import { compressImage } from '../utils/imageCompressor.js';
 
 const PRESET_IMAGES = [
   { label: 'Student ID', url: 'https://images.unsplash.com/photo-1578328819058-b69f3a3b0f6b?w=600&auto=format&fit=crop&q=80' },
@@ -112,14 +113,19 @@ export const ReportItemModal = ({
     onClose();
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImageUrl(reader.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImage(file, 800, 800, 0.7);
+        setImageUrl(compressed);
+      } catch {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImageUrl(reader.result);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 

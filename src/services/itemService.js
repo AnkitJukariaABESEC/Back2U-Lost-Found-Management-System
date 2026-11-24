@@ -4,6 +4,28 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
 const STORAGE_KEY_ITEMS = 'back2u_items_v2';
 const STORAGE_KEY_CLAIMS = 'back2u_claims_v2';
 
+// Safe LocalStorage writer that never throws QuotaExceededError
+function safeSetStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    console.warn(`LocalStorage quota exceeded or write failed for ${key}:`, err);
+    try {
+      if (key === STORAGE_KEY_ITEMS) {
+        // Strip out heavy base64 strings so local storage stays lightweight
+        const parsed = JSON.parse(value);
+        const lightweight = parsed.map((it) => ({
+          ...it,
+          imageUrl: it.imageUrl && it.imageUrl.length > 50000 ? '' : it.imageUrl,
+        }));
+        localStorage.setItem(key, JSON.stringify(lightweight));
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
+
 // Ensure previous version keys are cleaned
 try {
   localStorage.removeItem('back2u_items_v1');
@@ -21,8 +43,7 @@ export const itemService = {
       if (res.ok) {
         const data = await res.json();
         if (data.connected && Array.isArray(data.items)) {
-          // Cache in local storage for instant offline loading
-          localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(data.items));
+          safeSetStorage(STORAGE_KEY_ITEMS, JSON.stringify(data.items));
           return data.items;
         }
       }
@@ -64,12 +85,12 @@ export const itemService = {
     }
 
     // 3. LocalStorage fallback
-    const stored = localStorage.getItem(STORAGE_KEY_ITEMS);
-    if (!stored) {
-      localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(INITIAL_ITEMS));
-      return INITIAL_ITEMS;
-    }
     try {
+      const stored = localStorage.getItem(STORAGE_KEY_ITEMS);
+      if (!stored) {
+        safeSetStorage(STORAGE_KEY_ITEMS, JSON.stringify(INITIAL_ITEMS));
+        return INITIAL_ITEMS;
+      }
       return JSON.parse(stored);
     } catch {
       return INITIAL_ITEMS;
@@ -105,7 +126,7 @@ export const itemService = {
           description: newItem.description,
           location_found: newItem.location,
           date_found: newItem.date,
-          image_url: newItem.imageUrl,
+          image_url: newItem.imageUrl?.length > 500000 ? undefined : newItem.imageUrl,
           status: newItem.status,
           finder_name: newItem.finderOrSeekerName,
           finder_roll_no: newItem.rollNumber,
@@ -119,10 +140,16 @@ export const itemService = {
       }
     }
 
-    // 3. Update LocalStorage cache
-    const items = await this.getItems();
-    const updated = [newItem, ...items.filter((it) => it.id !== newItem.id)];
-    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(updated));
+    // 3. Update LocalStorage cache synchronously without redundant network calls
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_ITEMS);
+      const items = stored ? JSON.parse(stored) : [];
+      const updated = [newItem, ...items.filter((it) => it.id !== newItem.id)];
+      safeSetStorage(STORAGE_KEY_ITEMS, JSON.stringify(updated));
+    } catch (err) {
+      console.warn('LocalStorage save failed:', err);
+    }
+
     return newItem;
   },
 
@@ -147,16 +174,22 @@ export const itemService = {
     }
 
     // 3. Delete from LocalStorage
-    const items = await this.getItems();
-    const remainingItems = items.filter((item) => item.id !== itemId);
-    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(remainingItems));
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_ITEMS);
+      const items = stored ? JSON.parse(stored) : [];
+      const remainingItems = items.filter((item) => item.id !== itemId);
+      safeSetStorage(STORAGE_KEY_ITEMS, JSON.stringify(remainingItems));
 
-    // Also clean any claims for this item
-    const claims = await this.getClaims();
-    const remainingClaims = claims.filter((c) => c.itemId !== itemId);
-    localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(remainingClaims));
+      // Also clean any claims for this item
+      const storedClaims = localStorage.getItem(STORAGE_KEY_CLAIMS);
+      const claims = storedClaims ? JSON.parse(storedClaims) : [];
+      const remainingClaims = claims.filter((c) => c.itemId !== itemId);
+      safeSetStorage(STORAGE_KEY_CLAIMS, JSON.stringify(remainingClaims));
 
-    return remainingItems;
+      return remainingItems;
+    } catch {
+      return [];
+    }
   },
 
   // Update item status (if marked as returned, automatically deletes it)
@@ -186,12 +219,17 @@ export const itemService = {
     }
 
     // 3. Update in LocalStorage
-    const items = await this.getItems();
-    const updated = items.map((item) =>
-      item.id === itemId ? { ...item, status } : item
-    );
-    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(updated));
-    return updated;
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_ITEMS);
+      const items = stored ? JSON.parse(stored) : [];
+      const updated = items.map((item) =>
+        item.id === itemId ? { ...item, status } : item
+      );
+      safeSetStorage(STORAGE_KEY_ITEMS, JSON.stringify(updated));
+      return updated;
+    } catch {
+      return [];
+    }
   },
 
   // Fetch claims
@@ -201,7 +239,7 @@ export const itemService = {
       if (res.ok) {
         const data = await res.json();
         if (data.connected && Array.isArray(data.claims)) {
-          localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(data.claims));
+          safeSetStorage(STORAGE_KEY_CLAIMS, JSON.stringify(data.claims));
           return data.claims;
         }
       }
@@ -209,12 +247,12 @@ export const itemService = {
       // fallback
     }
 
-    const stored = localStorage.getItem(STORAGE_KEY_CLAIMS);
-    if (!stored) {
-      localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(INITIAL_CLAIMS));
-      return INITIAL_CLAIMS;
-    }
     try {
+      const stored = localStorage.getItem(STORAGE_KEY_CLAIMS);
+      if (!stored) {
+        safeSetStorage(STORAGE_KEY_CLAIMS, JSON.stringify(INITIAL_CLAIMS));
+        return INITIAL_CLAIMS;
+      }
       return JSON.parse(stored);
     } catch {
       return INITIAL_CLAIMS;
@@ -240,9 +278,14 @@ export const itemService = {
       // fallback
     }
 
-    const claims = await this.getClaims();
-    const updatedClaims = [newClaim, ...claims];
-    localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(updatedClaims));
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_CLAIMS);
+      const claims = stored ? JSON.parse(stored) : [];
+      const updatedClaims = [newClaim, ...claims];
+      safeSetStorage(STORAGE_KEY_CLAIMS, JSON.stringify(updatedClaims));
+    } catch {
+      // fallback
+    }
 
     // Update item status to CLAIM_PENDING
     await this.updateItemStatus(claimData.itemId, 'CLAIM_PENDING');
@@ -262,34 +305,40 @@ export const itemService = {
       // fallback
     }
 
-    const claims = await this.getClaims();
-    let targetItemId = null;
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_CLAIMS);
+      const claims = stored ? JSON.parse(stored) : [];
+      let targetItemId = null;
 
-    const updatedClaims = claims.map((c) => {
-      if (c.id === claimId) {
-        targetItemId = c.itemId;
-        return { ...c, status };
+      const updatedClaims = claims.map((c) => {
+        if (c.id === claimId) {
+          targetItemId = c.itemId;
+          return { ...c, status };
+        }
+        return c;
+      });
+
+      safeSetStorage(STORAGE_KEY_CLAIMS, JSON.stringify(updatedClaims));
+
+      if (targetItemId) {
+        if (status === 'APPROVED') {
+          await this.deleteItem(targetItemId);
+        } else {
+          await this.updateItemStatus(targetItemId, 'AVAILABLE');
+        }
       }
-      return c;
-    });
-
-    localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(updatedClaims));
-
-    if (targetItemId) {
-      if (status === 'APPROVED') {
-        // Automatically delete the item from the feed when claimed!
-        await this.deleteItem(targetItemId);
-      } else {
-        await this.updateItemStatus(targetItemId, 'AVAILABLE');
-      }
+    } catch {
+      // fallback
     }
   },
 
   // Reset to clean empty state
   resetDemoData() {
-    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify([]));
-    localStorage.removeItem('back2u_items_v1');
-    localStorage.removeItem('back2u_claims_v1');
+    try {
+      localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify([]));
+      localStorage.removeItem('back2u_items_v1');
+      localStorage.removeItem('back2u_claims_v1');
+    } catch {}
   }
 };

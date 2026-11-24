@@ -171,8 +171,19 @@ export default function App() {
   };
 
   const handleCreateItem = async (newItemData) => {
-    const created = await itemService.createItem(newItemData);
-    setItems((prev) => [created, ...prev]);
+    try {
+      const created = await itemService.createItem(newItemData);
+      setItems((prev) => [created, ...prev.filter((it) => it.id !== created.id)]);
+      try {
+        confetti({
+          particleCount: 60,
+          spread: 60,
+          origin: { y: 0.6 },
+        });
+      } catch {}
+    } catch (err) {
+      console.error('Failed to create item:', err);
+    }
   };
 
   const handleOpenClaimModal = (item) => {

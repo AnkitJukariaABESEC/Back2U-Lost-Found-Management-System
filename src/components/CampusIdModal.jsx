@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { emailService } from '../services/emailService.js';
+import { compressImage } from '../utils/imageCompressor.js';
 
 const BRANCHES = [
   'Computer Science and Engineering (CSE-1)',
@@ -146,14 +147,19 @@ export const CampusIdModal = ({
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarUrl(reader.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImage(file, 400, 400, 0.7);
+        setAvatarUrl(compressed);
+      } catch {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setAvatarUrl(reader.result);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
