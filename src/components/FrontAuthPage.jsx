@@ -197,6 +197,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
       } catch {}
       onAuthSuccess(result.profile);
     } else {
+      setSignupEmail(clean);
       setLoginError(result.message || 'No registered Campus ID found with this email.');
     }
   };
@@ -362,7 +363,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
             </h1>
 
             <p className="text-slate-600 text-base sm:text-lg max-w-lg leading-relaxed">
-              Create your verified Campus ID or sign in. When registering, we send an auto-verification link directly to your email inbox. Once clicked, you are automatically redirected to log in.
+              Create your verified Campus ID or sign in. When registering, we send a verification link directly to your email inbox. Once verified, simply complete your student/faculty details to create your ID card.
             </p>
 
             {/* Trust Badges */}
@@ -373,7 +374,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-[#1F1746]">Verified Campus IDs</h4>
-                  <p className="text-[11px] text-slate-500">Students & Teachers only</p>
+                  <p className="text-[11px] text-slate-500">Students &amp; Teachers only</p>
                 </div>
               </div>
 
@@ -383,7 +384,7 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-[#1F1746]">Direct Email Link</h4>
-                  <p className="text-[11px] text-slate-500">Auto-verifies & redirects</p>
+                  <p className="text-[11px] text-slate-500">Auto-verifies your account</p>
                 </div>
               </div>
             </div>
@@ -416,6 +417,14 @@ export const FrontAuthPage = ({ onAuthSuccess, onGuestPreview, initialVerifiedEm
           <div className="lg:col-span-6">
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xl p-6 sm:p-8 max-w-md mx-auto relative">
               
+              {/* Header Badge & Version Indicator */}
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Campus Access</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  v2.2 Live
+                </span>
+              </div>
+
               {/* Tab Selector: Login vs Sign Up */}
               <div className="flex items-center p-1 bg-slate-100 rounded-full mb-6">
                 <button
