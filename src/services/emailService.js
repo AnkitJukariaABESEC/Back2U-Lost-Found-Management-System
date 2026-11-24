@@ -12,7 +12,7 @@ export const isRealEmailConfigured = Boolean(
 
 export const emailService = {
   /**
-   * Generates a unique verification token and saves it in localStorage
+   * Generates a unique verification token and saves it in localStorage and backend
    */
   createVerificationToken(email) {
     const cleanEmail = email.trim().toLowerCase();
@@ -33,11 +33,20 @@ export const emailService = {
       console.warn('Storage warning:', e);
     }
 
+    // Register pending verification with backend for cross-device verification
+    try {
+      fetch('/api/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', email: cleanEmail, token }),
+      }).catch(() => {});
+    } catch {}
+
     return token;
   },
 
   /**
-   * Checks if an email is already verified
+   * Checks if an email is already verified in local cache
    */
   isEmailVerified(email) {
     if (!email) return false;
@@ -51,9 +60,39 @@ export const emailService = {
   },
 
   /**
-   * Marks an email as verified
+   * Checks cross-device verification status via backend API.
+   * If user clicked the link on another device (phone, laptop), this detects it!
    */
-  markEmailVerified(email) {
+  async checkServerVerification(email) {
+    if (!email) return false;
+    const cleanEmail = email.trim().toLowerCase();
+
+    // If already verified locally, return true immediately
+    if (this.isEmailVerified(cleanEmail)) {
+      return true;
+    }
+
+    try {
+      const res = await fetch(`/api/verify?email=${encodeURIComponent(cleanEmail)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.verified) {
+          // Mark locally as verified
+          this.markEmailVerified(cleanEmail, null, false);
+          return true;
+        }
+      }
+    } catch {
+      // Ignore network errors during polling
+    }
+
+    return false;
+  },
+
+  /**
+   * Marks an email as verified locally and syncs across all devices via backend API
+   */
+  markEmailVerified(email, token = null, syncToBackend = true) {
     if (!email) return;
     const cleanEmail = email.trim().toLowerCase();
     try {
@@ -72,6 +111,17 @@ export const emailService = {
       window.dispatchEvent(new Event('storage'));
     } catch (e) {
       console.warn('Error marking email verified:', e);
+    }
+
+    // Sync verification status to central backend so ANY device waiting updates instantly!
+    if (syncToBackend) {
+      try {
+        fetch('/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'verify', email: cleanEmail, token }),
+        }).catch(() => {});
+      } catch {}
     }
   },
 

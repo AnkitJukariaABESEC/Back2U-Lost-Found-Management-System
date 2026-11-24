@@ -123,7 +123,7 @@ export const CampusIdModal = ({
     }
   }, [email]);
 
-  // Cross-tab auto-verification listener
+  // Cross-tab auto-verification listener (same browser tabs)
   useEffect(() => {
     const handleStorageChange = () => {
       if (email && emailService.isEmailVerified(email)) {
@@ -144,6 +144,34 @@ export const CampusIdModal = ({
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [email]);
+
+  // Cross-device auto-verification poller:
+  // If the user clicks the verification link from ANY other device (e.g. Mobile phone while laptop is open),
+  // this poller queries the backend and immediately completes verification on this screen!
+  useEffect(() => {
+    if (!isOpen || isEmailVerified || !email || !linkSent) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const verified = await emailService.checkServerVerification(email);
+        if (verified && isMounted) {
+          setIsEmailVerified(true);
+          setLinkSent(false);
+          try {
+            confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
+          } catch {}
+        }
+      } catch {
+        // Ignore network errors
+      }
+    }, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isOpen, isEmailVerified, email, linkSent]);
 
   if (!isOpen) return null;
 
