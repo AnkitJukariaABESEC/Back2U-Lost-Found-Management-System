@@ -29,29 +29,24 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     
-    <!-- Service Worker Registration & Cache Purging -->
+    <!-- Unregister legacy service workers and clear stale caches -->
     <script>
-      // Instantly clear any stale caches from previous builds
-      if ('caches' in window) {
-        caches.keys().then((names) => {
-          for (const name of names) {
-            if (name !== 'back2u-cache-v3') {
-              caches.delete(name);
+      (function() {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (var i = 0; i < registrations.length; i++) {
+              registrations[i].unregister();
             }
-          }
-        });
-      }
-
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then((reg) => {
-            reg.update();
-            console.log('Back2U PWA ServiceWorker active:', reg.scope);
-          }).catch((err) => {
-            console.log('Back2U PWA ServiceWorker registration failed:', err);
           });
-        });
-      }
+        }
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (var i = 0; i < names.length; i++) {
+              caches.delete(names[i]);
+            }
+          });
+        }
+      })();
     </script>
   </body>
 </html>
