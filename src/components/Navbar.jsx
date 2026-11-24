@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   MapPin, 
   Search, 
@@ -178,9 +178,9 @@ export const Navbar = ({
                   title="Click to view or edit your Campus ID"
                 >
                   <UserCheck className="w-4 h-4 text-[#371B7A] shrink-0" />
-                  <span className="max-w-[100px] sm:max-w-[120px] truncate">{currentProfile.name.split(' ')[0]}</span>
+                  <span className="max-w-[100px] sm:max-w-[120px] truncate">{(currentProfile?.name || 'Member').split(' ')[0]}</span>
                   <span className="text-[10px] bg-[#371B7A] text-white px-1.5 py-0.2 rounded-full font-bold uppercase">
-                    {currentProfile.role === 'TEACHER' ? 'Faculty' : 'ID'}
+                    {currentProfile?.role === 'TEACHER' ? 'Faculty' : 'ID'}
                   </span>
                 </button>
 
