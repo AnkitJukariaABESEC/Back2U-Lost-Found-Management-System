@@ -1,5 +1,5 @@
-// Self-unregistering Service Worker: Purges all legacy caches and updates clients
-self.addEventListener('install', (event) => {
+// Self-destroying service worker: cleans any residual caches and unregisters immediately
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
@@ -24,6 +24,5 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', () => {
-  // Never intercept requests - direct network delivery
   return;
 });
