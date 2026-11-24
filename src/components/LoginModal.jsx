@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Mail, LogIn, AlertCircle, ArrowRight } from 'lucide-react';
+import { X, Mail, LogIn, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export const LoginModal = ({
@@ -10,10 +10,11 @@ export const LoginModal = ({
 }) => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -23,22 +24,29 @@ export const LoginModal = ({
       return;
     }
 
-    const result = onLogin(cleanEmail);
-    if (result.success) {
-      try {
-        confetti({
-          particleCount: 50,
-          spread: 50,
-          origin: { y: 0.6 },
-        });
-      } catch {
-        // ignore
+    setIsLoading(true);
+    try {
+      const result = await onLogin(cleanEmail);
+      if (result.success) {
+        try {
+          confetti({
+            particleCount: 50,
+            spread: 50,
+            origin: { y: 0.6 },
+          });
+        } catch {
+          // ignore
+        }
+        setEmail('');
+        setError('');
+        onClose();
+      } else {
+        setError(result.message || 'No registered Campus ID found with this email.');
       }
-      setEmail('');
-      setError('');
-      onClose();
-    } else {
-      setError(result.message || 'No registered Campus ID found with this email.');
+    } catch {
+      setError('An error occurred during login. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -95,10 +103,20 @@ export const LoginModal = ({
 
           <button
             type="submit"
-            className="w-full py-3 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-98 shadow-md shadow-indigo-200 transition-all cursor-pointer flex items-center justify-center gap-2"
+            disabled={isLoading}
+            className="w-full py-3 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-98 shadow-md shadow-indigo-200 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
           >
-            <LogIn className="w-4 h-4" />
-            <span>Sign In to Campus ID</span>
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Checking Campus ID...</span>
+              </>
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                <span>Sign In to Campus ID</span>
+              </>
+            )}
           </button>
 
           {/* Switch to Sign Up */}

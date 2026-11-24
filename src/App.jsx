@@ -66,6 +66,7 @@ export default function App() {
     const [fetchedItems, fetchedClaims] = await Promise.all([
       itemService.getItems(),
       itemService.getClaims(),
+      profileService.syncProfiles(),
     ]);
     setItems(fetchedItems);
     setClaims(fetchedClaims);
@@ -101,22 +102,24 @@ export default function App() {
       } catch {}
 
       // If user profile already exists, automatically log them in
-      const existing = profileService.findProfileByQuery(cleanEmail);
-      if (existing) {
-        const result = profileService.login(cleanEmail);
-        if (result.success) {
-          setCurrentProfile(result.profile);
+      (async () => {
+        const existing = await profileService.findProfileByQuery(cleanEmail);
+        if (existing) {
+          const result = await profileService.login(cleanEmail);
+          if (result.success) {
+            setCurrentProfile(result.profile);
+          }
+        } else {
+          // Open Sign Up modal immediately so user can complete registration
+          setIsCampusIdModalOpen(true);
         }
-      } else {
-        // Open Sign Up modal immediately so user can complete registration
-        setIsCampusIdModalOpen(true);
-      }
+      })();
     }
   }, []);
 
   // Handlers for Authentication & Profile
-  const handleLogin = (email) => {
-    const result = profileService.login(email);
+  const handleLogin = async (email) => {
+    const result = await profileService.login(email);
     if (result.success) {
       setCurrentProfile(result.profile);
     }
@@ -128,8 +131,8 @@ export default function App() {
     setCurrentProfile(null);
   };
 
-  const handleSaveProfile = (profileData) => {
-    const saved = profileService.saveProfile(profileData);
+  const handleSaveProfile = async (profileData) => {
+    const saved = await profileService.saveProfile(profileData);
     setCurrentProfile(saved);
   };
 

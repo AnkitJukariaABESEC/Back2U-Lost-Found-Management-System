@@ -26,6 +26,24 @@ export const Navbar = ({
   onScrollToBrowse,
 }) => {
   const [showNotificationToast, setShowNotificationToast] = useState(false);
+  const [dbStatus, setDbStatus] = useState(isSupabaseConfigured ? 'Supabase Live' : 'Connecting...');
+
+  useEffect(() => {
+    fetch('/api/items')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.connected) {
+          setDbStatus('MongoDB Atlas Live');
+        } else if (isSupabaseConfigured) {
+          setDbStatus('Supabase Live');
+        } else {
+          setDbStatus('Local Storage (Fallback)');
+        }
+      })
+      .catch(() => {
+        setDbStatus(isSupabaseConfigured ? 'Supabase Live' : 'Local Storage (Fallback)');
+      });
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-xs">
@@ -112,8 +130,14 @@ export const Navbar = ({
                     </p>
                     <p className="flex items-center justify-between">
                       <span>Database Engine:</span>
-                      <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
-                        {isSupabaseConfigured ? 'Supabase Live' : 'Local Storage'}
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
+                        dbStatus.includes('MongoDB')
+                          ? 'text-emerald-700 bg-emerald-100'
+                          : dbStatus.includes('Supabase')
+                          ? 'text-teal-700 bg-teal-50'
+                          : 'text-amber-700 bg-amber-50'
+                      }`}>
+                        {dbStatus}
                       </span>
                     </p>
                     <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-100">

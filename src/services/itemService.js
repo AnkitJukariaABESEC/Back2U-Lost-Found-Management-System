@@ -13,8 +13,24 @@ try {
 }
 
 export const itemService = {
-  // Fetch all items
+  // Fetch all items (MongoDB Atlas -> Supabase -> LocalStorage)
   async getItems() {
+    // 1. Try MongoDB Atlas Serverless API
+    try {
+      const res = await fetch('/api/items');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.connected && Array.isArray(data.items)) {
+          // Cache in local storage for instant offline loading
+          localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(data.items));
+          return data.items;
+        }
+      }
+    } catch {
+      // API not available or offline, fallback to Supabase / LocalStorage
+    }
+
+    // 2. Try Supabase fallback
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase
@@ -47,7 +63,7 @@ export const itemService = {
       }
     }
 
-    // LocalStorage fallback
+    // 3. LocalStorage fallback
     const stored = localStorage.getItem(STORAGE_KEY_ITEMS);
     if (!stored) {
       localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(INITIAL_ITEMS));
@@ -60,7 +76,7 @@ export const itemService = {
     }
   },
 
-  // Save new item
+  // Save new item (MongoDB Atlas + Supabase + LocalStorage)
   async createItem(item) {
     const newItem = {
       ...item,
@@ -68,6 +84,18 @@ export const itemService = {
       createdAt: new Date().toISOString(),
     };
 
+    // 1. Save to MongoDB Atlas
+    try {
+      await fetch('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newItem),
+      });
+    } catch {
+      // offline / local fallback
+    }
+
+    // 2. Save to Supabase if configured
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('items').insert({
@@ -91,14 +119,25 @@ export const itemService = {
       }
     }
 
+    // 3. Update LocalStorage cache
     const items = await this.getItems();
-    const updated = [newItem, ...items];
+    const updated = [newItem, ...items.filter((it) => it.id !== newItem.id)];
     localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(updated));
     return newItem;
   },
 
   // Automatically delete item when claimed/returned
   async deleteItem(itemId) {
+    // 1. Delete from MongoDB Atlas
+    try {
+      await fetch(`/api/items?id=${encodeURIComponent(itemId)}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      // local fallback
+    }
+
+    // 2. Delete from Supabase
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('items').delete().eq('id', itemId);
@@ -107,11 +146,12 @@ export const itemService = {
       }
     }
 
+    // 3. Delete from LocalStorage
     const items = await this.getItems();
     const remainingItems = items.filter((item) => item.id !== itemId);
     localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(remainingItems));
 
-    // Also delete any claims for this item
+    // Also clean any claims for this item
     const claims = await this.getClaims();
     const remainingClaims = claims.filter((c) => c.itemId !== itemId);
     localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(remainingClaims));
@@ -125,6 +165,18 @@ export const itemService = {
       return await this.deleteItem(itemId);
     }
 
+    // 1. Update in MongoDB Atlas
+    try {
+      await fetch('/api/items', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: itemId, status }),
+      });
+    } catch {
+      // local fallback
+    }
+
+    // 2. Update in Supabase
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('items').update({ status }).eq('id', itemId);
@@ -133,6 +185,7 @@ export const itemService = {
       }
     }
 
+    // 3. Update in LocalStorage
     const items = await this.getItems();
     const updated = items.map((item) =>
       item.id === itemId ? { ...item, status } : item
@@ -143,6 +196,19 @@ export const itemService = {
 
   // Fetch claims
   async getClaims() {
+    try {
+      const res = await fetch('/api/claims');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.connected && Array.isArray(data.claims)) {
+          localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(data.claims));
+          return data.claims;
+        }
+      }
+    } catch {
+      // fallback
+    }
+
     const stored = localStorage.getItem(STORAGE_KEY_CLAIMS);
     if (!stored) {
       localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(INITIAL_CLAIMS));
@@ -164,6 +230,16 @@ export const itemService = {
       createdAt: new Date().toISOString(),
     };
 
+    try {
+      await fetch('/api/claims', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newClaim),
+      });
+    } catch {
+      // fallback
+    }
+
     const claims = await this.getClaims();
     const updatedClaims = [newClaim, ...claims];
     localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(updatedClaims));
@@ -176,6 +252,16 @@ export const itemService = {
 
   // Update claim status: when APPROVED, automatically deletes the item from feed!
   async updateClaimStatus(claimId, status) {
+    try {
+      await fetch('/api/claims', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: claimId, status }),
+      });
+    } catch {
+      // fallback
+    }
+
     const claims = await this.getClaims();
     let targetItemId = null;
 
