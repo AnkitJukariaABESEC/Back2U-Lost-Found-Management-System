@@ -26,9 +26,9 @@ export default async function handler(req, res) {
     const cleanEmail = email.trim().toLowerCase();
 
     // 1. Check in MongoDB if configured
-    if (isMongoConfigured) {
+    if (isMongoConfigured()) {
       try {
-        const db = await getDatabase();
+        const { db } = await getDatabase();
         if (db) {
           const record = await db.collection('verifications').findOne({
             email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') },
@@ -84,9 +84,9 @@ export default async function handler(req, res) {
       });
 
       // Update in MongoDB
-      if (isMongoConfigured) {
+      if (isMongoConfigured()) {
         try {
-          const db = await getDatabase();
+          const { db } = await getDatabase();
           if (db) {
             await db.collection('verifications').updateOne(
               { email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } },
@@ -125,9 +125,9 @@ export default async function handler(req, res) {
         createdAt: now,
       });
 
-      if (isMongoConfigured) {
+      if (isMongoConfigured()) {
         try {
-          const db = await getDatabase();
+          const { db } = await getDatabase();
           if (db) {
             await db.collection('verifications').updateOne(
               { email: { $regex: new RegExp(`^${cleanEmail}$`, 'i') } },

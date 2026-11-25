@@ -1,41 +1,49 @@
 import { MongoClient } from 'mongodb';
 
-const uri = process.env.MONGODB_URI;
 const options = {
   maxPoolSize: 10,
   serverSelectionTimeoutMS: 5000,
+  connectTimeoutMS: 10000,
 };
 
-let client;
-let clientPromise;
+let client = null;
+let clientPromise = null;
 
-export const isMongoConfigured = Boolean(
-  uri && 
-  (uri.startsWith('mongodb://') || uri.startsWith('mongodb+srv://'))
-);
+export function getMongoUri() {
+  return process.env.MONGODB_URI || '';
+}
 
-if (isMongoConfigured) {
-  if (process.env.NODE_ENV === 'development') {
-    if (!global._mongoClientPromise) {
-      client = new MongoClient(uri, options);
-      global._mongoClientPromise = client.connect();
-    }
-    clientPromise = global._mongoClientPromise;
-  } else {
-    client = new MongoClient(uri, options);
-    clientPromise = client.connect();
-  }
+export function isMongoConfigured() {
+  const uri = getMongoUri();
+  return Boolean(
+    uri && 
+    (uri.startsWith('mongodb://') || uri.startsWith('mongodb+srv://'))
+  );
 }
 
 export async function getDatabase(dbName = 'back2u') {
-  if (!isMongoConfigured) {
-    return null;
+  const uri = getMongoUri();
+  if (!uri || (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://'))) {
+    return { db: null, error: 'MONGODB_URI is not configured in Vercel environment variables' };
   }
+
   try {
+    if (!clientPromise) {
+      client = new MongoClient(uri, options);
+      clientPromise = client.connect();
+    }
     const clientInstance = await clientPromise;
-    return clientInstance.db(dbName);
+    return { db: clientInstance.db(dbName), error: null };
   } catch (err) {
-    console.error('MongoDB connection error:', err);
-    return null;
+    // Reset so subsequent requests can retry instead of caching the rejected promise
+    client = null;
+    clientPromise = null;
+    console.error('MongoDB connection failure:', err);
+    return {
+      db: null,
+      error: err.message || String(err),
+      name: err.name || 'ConnectionError',
+      code: err.code || null,
+    };
   }
 }

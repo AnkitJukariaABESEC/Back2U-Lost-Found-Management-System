@@ -9,16 +9,20 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  if (!isMongoConfigured) {
+  if (!isMongoConfigured()) {
     return res.status(200).json({
       connected: false,
       claims: [],
     });
   }
 
-  const db = await getDatabase();
+  const { db, error } = await getDatabase();
   if (!db) {
-    return res.status(500).json({ error: 'Failed to connect to MongoDB cluster' });
+    return res.status(200).json({
+      connected: false,
+      error: error || 'Failed to connect to MongoDB cluster',
+      claims: [],
+    });
   }
 
   const collection = db.collection('claims');
@@ -42,7 +46,7 @@ export default async function handler(req, res) {
         createdAt: claimData.createdAt || new Date().toISOString(),
       };
       await collection.insertOne(newClaim);
-      return res.status(201).json({ success: true, claim: newClaim });
+      return res.status(201).json({ success: true, connected: true, claim: newClaim });
     }
 
     if (req.method === 'PATCH') {

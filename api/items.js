@@ -10,19 +10,29 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  if (!isMongoConfigured) {
+  if (!isMongoConfigured()) {
     return res.status(200).json({
       connected: false,
-      message: 'MONGODB_URI not configured in environment variables',
+      message: 'MONGODB_URI not configured in Vercel environment variables',
       items: [],
     });
   }
 
-  const db = await getDatabase();
+  const { db, error } = await getDatabase();
   if (!db) {
-    return res.status(500).json({
+    const errorStr = String(error || '');
+    let hint = 'Check your MongoDB Atlas connection string in Vercel';
+    if (errorStr.toLowerCase().includes('auth') || errorStr.toLowerCase().includes('password')) {
+      hint = 'Authentication failed. Please verify your MongoDB database user and password in Vercel MONGODB_URI';
+    } else if (errorStr.includes('ServerSelectionError') || errorStr.includes('ETIMEDOUT') || errorStr.includes('queryTxt ETIMEOUT')) {
+      hint = 'Connection timed out. In MongoDB Atlas, go to Network Access -> Add IP -> select Allow Access From Anywhere (0.0.0.0/0)';
+    }
+
+    return res.status(200).json({
       connected: false,
-      error: 'Failed to connect to MongoDB cluster',
+      error: errorStr,
+      hint,
+      items: [],
     });
   }
 
@@ -36,7 +46,6 @@ export default async function handler(req, res) {
         .sort({ createdAt: -1 })
         .toArray();
 
-      // Clean MongoDB _id to string or remove to match frontend structure
       const cleaned = items.map((doc) => {
         const { _id, ...rest } = doc;
         return {
@@ -69,6 +78,7 @@ export default async function handler(req, res) {
 
       return res.status(201).json({
         success: true,
+        connected: true,
         item: newItem,
       });
     }

@@ -10,19 +10,20 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  if (!isMongoConfigured) {
+  if (!isMongoConfigured()) {
     return res.status(200).json({
       connected: false,
-      message: 'MONGODB_URI not configured in environment variables',
+      message: 'MONGODB_URI not configured in Vercel environment variables',
       profiles: [],
     });
   }
 
-  const db = await getDatabase();
+  const { db, error } = await getDatabase();
   if (!db) {
-    return res.status(500).json({
+    return res.status(200).json({
       connected: false,
-      error: 'Failed to connect to MongoDB cluster',
+      error: error || 'Failed to connect to MongoDB cluster',
+      profiles: [],
     });
   }
 
@@ -97,6 +98,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
+        connected: true,
         profile: profileToSave,
       });
     }
